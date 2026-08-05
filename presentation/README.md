@@ -1,7 +1,7 @@
 # Page de présentation
 
 Site vitrine du projet Ordimed.
-En ligne : https://heartfelt-pavlova-f79608.netlify.app/
+En ligne : https://ordimedev.netlify.app/
 
 ## Fichiers
 

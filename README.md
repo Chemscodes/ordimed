@@ -8,7 +8,7 @@ Conçu et développé par **Zaouali Chems Eddine**.
 
 `Flutter` · `Dart` · `Firebase Auth` · `Cloud Firestore` · `PDF / impression`
 
-**→ [Voir la présentation du projet](https://heartfelt-pavlova-f79608.netlify.app/)**
+**→ [Voir la présentation du projet](https://ordimedev.netlify.app/)**
 
 ---
 

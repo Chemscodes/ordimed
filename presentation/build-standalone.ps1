@@ -36,7 +36,7 @@ $head = @"
 <meta name="author" content="Zaouali Chems Eddine">
 <meta name="theme-color" content="#04100E">
 
-<link rel="canonical" href="https://heartfelt-pavlova-f79608.netlify.app/">
+<link rel="canonical" href="https://ordimedev.netlify.app/">
 
 <!-- Apercu lors du partage (LinkedIn, Facebook, WhatsApp, X). -->
 <meta property="og:type" content="website">
@@ -44,12 +44,12 @@ $head = @"
 <meta property="og:site_name" content="Ordimed">
 <meta property="og:title" content="$title">
 <meta property="og:description" content="De l'accueil du patient a l'ordonnance imprimee : salle d'attente en temps reel, seances, reglements et caisse du jour.">
-<meta property="og:url" content="https://heartfelt-pavlova-f79608.netlify.app/">
+<meta property="og:url" content="https://ordimedev.netlify.app/">
 <meta name="twitter:card" content="summary_large_image">
 
 <!-- Vignette de partage : decommenter une fois apercu.jpg (1200x630)
      depose dans ce dossier et le site redeploye. -->
-<!-- <meta property="og:image" content="https://heartfelt-pavlova-f79608.netlify.app/apercu.jpg"> -->
+<!-- <meta property="og:image" content="https://ordimedev.netlify.app/apercu.jpg"> -->
 <!-- <meta property="og:image:width" content="1200"> -->
 <!-- <meta property="og:image:height" content="630"> -->
 
