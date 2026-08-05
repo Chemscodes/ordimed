@@ -1,0 +1,81 @@
+rules_version = '2';
+
+// =============================================================
+//  Ordimed — regles de securite Firestore
+//
+//  Principe : un compte Firebase Auth = un cabinet = un espace
+//  users/{uid}. Personne ne lit ni n'ecrit hors du sien.
+//
+//  Deploiement :  firebase deploy --only firestore:rules
+// =============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    // Proprietaire de l'espace : l'uid du chemin est celui du connecte.
+    function owner(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    // Pour les requetes collectionGroup, le chemin ne porte plus l'uid :
+    // c'est le champ parentUid du document qui fait foi.
+    function ownsDoc() {
+      return signedIn()
+             && resource.data.parentUid is string
+             && resource.data.parentUid == request.auth.uid;
+    }
+
+    // ---------------------------------------------------------
+    //  L'espace complet d'un cabinet
+    //
+    //  Couvre users/{uid} et TOUT ce qui pend dessous :
+    //  comptes, patients, forms, salle_attente, rendezvous,
+    //  purchases, daily_stats.
+    // ---------------------------------------------------------
+    match /users/{uid} {
+      allow read, write: if owner(uid);
+
+      match /{sousDocument=**} {
+        allow read, write: if owner(uid);
+      }
+    }
+
+    // ---------------------------------------------------------
+    //  Requetes collectionGroup
+    //
+    //  Ces trois requetes traversent les cabinets, donc les regles
+    //  ci-dessus (basees sur le chemin) ne s'appliquent pas. Chaque
+    //  requete DOIT filtrer sur parentUid, sinon Firestore la refuse
+    //  — c'est exactement ce qui empeche un cabinet de lire un autre.
+    //
+    //  Lecture seule : toutes les ecritures passent par le chemin
+    //  complet, donc par les regles du bloc precedent.
+    // ---------------------------------------------------------
+
+    // firestore_service.dart — allPatientsStream()
+    match /{chemin=**}/patients/{patientId} {
+      allow read: if ownsDoc();
+    }
+
+    // dashboards — achats du jour et historique
+    match /{chemin=**}/purchases/{achatId} {
+      allow read: if ownsDoc();
+    }
+
+    // patient_details_page.dart — documents d'un patient
+    match /{chemin=**}/forms/{formId} {
+      allow read: if ownsDoc();
+    }
+
+    // ---------------------------------------------------------
+    //  Tout le reste est refuse par defaut.
+    //  (Aucune regle = aucun acces, y compris la collection 'tmp'
+    //  que le code utilise uniquement pour generer des identifiants
+    //  cote client, sans jamais lire ni ecrire.)
+    // ---------------------------------------------------------
+  }
+}

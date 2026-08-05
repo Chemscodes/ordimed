@@ -1,0 +1,70 @@
+import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'medecins_cards.dart';
+import '../ui/fluent_card.dart';
+import '../ui/fluent_button.dart';
+
+class AddPatientForm extends StatefulWidget {
+  final String parentUid;
+  final String assistantProfileId;
+
+  AddPatientForm({required this.parentUid, required this.assistantProfileId});
+
+  @override
+  _AddPatientFormState createState() => _AddPatientFormState();
+}
+
+class _AddPatientFormState extends State<AddPatientForm> {
+  final nom = TextEditingController();
+  final prenom = TextEditingController();
+  final age = TextEditingController();
+  final tel = TextEditingController();
+  final email = TextEditingController();
+  final formulaireInitial = TextEditingController();
+  String origine = '';
+  String motif = '';
+
+  String? selectedDoctorId;
+  Map<String, dynamic>? selectedDoctorData;
+
+  String generateId() => FirebaseFirestore.instance.collection('tmp').doc().id;
+
+  Future<void> saveForm() async {
+    if (selectedDoctorId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Choisis un medecin (touche une carte)')));
+      return;
+    }
+    if (nom.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Nom requis')),
+      );
+      return;
+    }
+    final patientId = generateId();
+    final data = {
+      'nom': nom.text.trim(),
+      'prenom': prenom.text.trim(),
+      'age': age.text.trim(),
+      'tel': tel.text.trim(),
+      'email': email.text.trim(),
+      'origine': origine,
+      'motif': motif,
+      'doctorId': selectedDoctorId,
+      'assistantId': widget.assistantProfileId,
+      'assignedMedecinName': selectedDoctorData?['name'] ?? '',
+      'createdByAssistantProfileId': widget.assistantProfileId,
+      'createdAt': FieldValue.serverTimestamp(),
+    };
+
+    final doctorRef = FirebaseFirestore.instance.collection('users').doc(widget.parentUid).collection('comptes').doc(selectedDoctorId).collection('patients').doc(patientId);
+    final assistantRef = FirebaseFirestore.instance.collection('users').doc(widget.parentUid).collection('comptes').doc(widget.assistantProfileId).collection('patients').doc(patientId);
+
+    // Création du patient sur le médecin et l'assistant
+    await Future.wait([doctorRef.set(data), assistantRef.set(data)]);
+
+    // Enregistrer un formulaire initial (visible médecin et assistant)
+    final formContent = formulaireInitial.text.trim().isEmpty
+        ? 'Dossier initial créé par l\'assistant'
+        : formulaireInitial.text.trim();
+    final initialForm = {
+      'type': 'Dossier initial',

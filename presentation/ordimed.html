@@ -1,0 +1,1455 @@
+<title>Ordimed — Logiciel de cabinet médical</title>
+
+<style>
+  /* ============================================================
+     ORDIMED — page de présentation
+     Monde visuel unique et assumé : salle sombre, néons cliniques.
+     La page ne suit volontairement pas le thème clair du lecteur.
+     ============================================================ */
+
+  :root {
+    --void:    #04100E;
+    --deep:    #061714;
+    --line:    #143430;
+
+    --mint:    #3BF0CE;
+    --teal:    #14B8A6;
+    --gold:    #FFB020;
+    --coral:   #FF6B57;
+
+    --text:    #EAFBF7;
+    --muted:   #7FA9A1;
+    --faint:   #4A6F69;
+
+    --sans: system-ui, "Segoe UI Variable Display", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "Cascadia Mono", "SF Mono", "Roboto Mono", Menlo, Consolas, monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    margin: 0;
+    background: var(--void);
+    color: var(--text);
+    font-family: var(--sans);
+    line-height: 1.6;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  :focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+
+  /* ---------- couche utilitaire (noms Tailwind) ---------- */
+
+  .relative { position: relative; }
+  .flex { display: flex; }
+  .flex-col { flex-direction: column; }
+  .flex-wrap { flex-wrap: wrap; }
+  .items-center { align-items: center; }
+  .items-baseline { align-items: baseline; }
+  .justify-between { justify-content: space-between; }
+  .flex-1 { flex: 1 1 0%; }
+
+  .gap-1 { gap: .25rem; }
+  .gap-2 { gap: .5rem; }
+  .gap-3 { gap: .75rem; }
+  .gap-4 { gap: 1rem; }
+  .gap-6 { gap: 1.5rem; }
+
+  .mt-1 { margin-top: .25rem; }
+  .mt-2 { margin-top: .5rem; }
+  .mt-3 { margin-top: .75rem; }
+  .mt-8 { margin-top: 2rem; }
+
+  .text-right { text-align: right; }
+
+  .text-xs { font-size: .72rem; }
+  .text-lg { font-size: 1.12rem; }
+
+  .font-bold { font-weight: 700; }
+  .uppercase { text-transform: uppercase; }
+  .tracking-wide { letter-spacing: .14em; }
+
+  .font-mono { font-family: var(--mono); }
+  .tabular { font-variant-numeric: tabular-nums; }
+
+  .text-muted { color: var(--muted); }
+  .text-faint { color: var(--faint); }
+  .text-mint { color: var(--mint); }
+  .text-gold { color: var(--gold); }
+
+  .list-none { list-style: none; padding: 0; margin: 0; }
+
+  .container {
+    width: 100%;
+    max-width: 76rem;
+    margin: 0 auto;
+    padding-left: clamp(1.1rem, 4vw, 2.5rem);
+    padding-right: clamp(1.1rem, 4vw, 2.5rem);
+  }
+
+  /* ---------- fond ambiant ---------- */
+
+  #ecg {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+    pointer-events: none;
+    opacity: .5;
+  }
+
+  .aura {
+    position: fixed;
+    border-radius: 50%;
+    filter: blur(90px);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .aura-a { top: -18vh; right: -12vw; width: 46vw; height: 46vw; background: rgba(20,184,166,.16); }
+  .aura-b { bottom: -22vh; left: -14vw; width: 42vw; height: 42vw; background: rgba(255,176,32,.09); }
+
+  .page { position: relative; z-index: 1; }
+
+  /* ---------- typographie ---------- */
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: .68rem;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    color: var(--mint);
+  }
+
+  h1, h2, h3 { margin: 0; font-weight: 800; letter-spacing: -.03em; line-height: 1.1; text-wrap: balance; }
+
+  .h-display { font-size: clamp(2.4rem, 7.2vw, 5.2rem); }
+  .h-section { font-size: clamp(1.7rem, 4.4vw, 3rem); }
+  .h-card { font-size: 1.06rem; font-weight: 700; letter-spacing: -.01em; }
+
+  .glow-text {
+    background: linear-gradient(104deg, var(--mint) 0%, #7CFFE4 32%, var(--gold) 92%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  p { margin: 0; }
+  .prose { max-width: 60ch; color: var(--muted); font-size: 1.02rem; }
+
+  /* ---------- verre + bordure lumineuse ---------- */
+
+  .glass {
+    background: linear-gradient(160deg, rgba(20,52,48,.55), rgba(6,23,20,.72));
+    border: 1px solid var(--line);
+    border-radius: 1rem;
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .glass::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(59,240,206,.5), transparent);
+  }
+
+  .chip {
+    font-family: var(--mono);
+    font-size: .68rem;
+    letter-spacing: .08em;
+    padding: .34rem .7rem;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    color: var(--muted);
+    background: rgba(10,33,29,.6);
+  }
+
+  /* ---------- barre supérieure ---------- */
+
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    background: rgba(4,16,14,.78);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--line);
+  }
+
+  .topbar-in {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding-top: .85rem;
+    padding-bottom: .85rem;
+  }
+
+  .brand {
+    font-weight: 800;
+    font-size: 1.15rem;
+    letter-spacing: -.03em;
+    display: flex;
+    align-items: center;
+    gap: .55rem;
+  }
+
+  .brand-dot {
+    width: .58rem;
+    height: .58rem;
+    border-radius: 50%;
+    background: var(--mint);
+    box-shadow: 0 0 12px var(--mint);
+    animation: pulse 2.4s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: .45; transform: scale(.82); }
+  }
+
+  .topbar-name { display: none; }
+  @media (min-width: 40rem) { .topbar-name { display: inline; } }
+
+  /* ---------- héros ---------- */
+
+  .hero { padding: clamp(3.5rem, 9vw, 7rem) 0 clamp(2.5rem, 6vw, 4rem); }
+
+  .hero-grid {
+    display: grid;
+    gap: clamp(2.5rem, 6vw, 4.5rem);
+    align-items: center;
+  }
+
+  @media (min-width: 64rem) {
+    .hero-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); }
+  }
+
+  /* ---------- scène 3D ---------- */
+
+  .stage { perspective: 1400px; perspective-origin: 50% 40%; }
+
+  .deck {
+    transform-style: preserve-3d;
+    will-change: transform;
+  }
+
+  .screen {
+    background: linear-gradient(168deg, #0B2521, #061714);
+    border: 1px solid var(--line);
+    border-radius: .9rem;
+    box-shadow:
+      0 40px 90px -30px rgba(0,0,0,.85),
+      0 0 0 1px rgba(59,240,206,.08),
+      0 0 60px -20px rgba(20,184,166,.4);
+    overflow: hidden;
+    transform-style: preserve-3d;
+  }
+
+  .screen-bar {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    padding: .6rem .85rem;
+    border-bottom: 1px solid var(--line);
+    background: rgba(4,16,14,.6);
+  }
+
+  .dot { width: .58rem; height: .58rem; border-radius: 50%; }
+
+  .screen-title {
+    font-family: var(--mono);
+    font-size: .66rem;
+    letter-spacing: .1em;
+    color: var(--faint);
+    margin-left: .35rem;
+  }
+
+  .screen-body { padding: .9rem; display: flex; flex-direction: column; gap: .7rem; }
+
+  .till {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: .8rem .9rem;
+    border-radius: .65rem;
+    background: linear-gradient(100deg, rgba(20,184,166,.18), rgba(255,176,32,.1));
+    border: 1px solid rgba(59,240,206,.22);
+    transform: translateZ(28px);
+  }
+
+  .till-n {
+    font-size: 1.5rem;
+    font-weight: 800;
+    letter-spacing: -.035em;
+    font-variant-numeric: tabular-nums;
+    color: var(--mint);
+  }
+
+  .queue { display: flex; flex-direction: column; gap: .45rem; min-height: 11.5rem; transform: translateZ(14px); }
+
+  .row {
+    display: flex;
+    align-items: center;
+    gap: .7rem;
+    padding: .58rem .7rem;
+    border-radius: .6rem;
+    background: rgba(10,33,29,.75);
+    border: 1px solid var(--line);
+    animation: rowIn .5s cubic-bezier(.2,.8,.3,1) both;
+  }
+
+  @keyframes rowIn {
+    from { opacity: 0; transform: translateX(-14px) scale(.97); }
+    to   { opacity: 1; transform: none; }
+  }
+
+  .row.leaving { animation: rowOut .5s ease forwards; }
+
+  @keyframes rowOut {
+    to { opacity: 0; transform: translateX(16px) scale(.96); height: 0; padding-top: 0; padding-bottom: 0; margin-top: -.45rem; }
+  }
+
+  .avatar {
+    width: 1.7rem; height: 1.7rem;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    font-size: .66rem;
+    font-weight: 700;
+    background: rgba(59,240,206,.14);
+    color: var(--mint);
+    flex-shrink: 0;
+  }
+
+  .row-name { font-size: .82rem; font-weight: 600; }
+  .row-meta { font-size: .68rem; color: var(--faint); font-family: var(--mono); }
+
+  .status {
+    font-family: var(--mono);
+    font-size: .6rem;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    padding: .22rem .5rem;
+    border-radius: 999px;
+    white-space: nowrap;
+    transition: background .4s ease, color .4s ease, border-color .4s ease;
+  }
+
+  .st-wait { background: rgba(127,169,161,.14); color: var(--muted); border: 1px solid rgba(127,169,161,.25); }
+  .st-live { background: rgba(255,176,32,.16); color: var(--gold); border: 1px solid rgba(255,176,32,.35); }
+  .st-done { background: rgba(59,240,206,.16); color: var(--mint); border: 1px solid rgba(59,240,206,.35); }
+
+  .modal {
+    position: absolute;
+    left: 50%;
+    bottom: 1rem;
+    width: min(15rem, 78%);
+    transform: translate(-50%, 130%) translateZ(60px);
+    background: linear-gradient(165deg, #0E2E29, #071B18);
+    border: 1px solid rgba(59,240,206,.3);
+    border-radius: .75rem;
+    padding: .85rem;
+    box-shadow: 0 30px 60px -18px rgba(0,0,0,.9);
+    transition: transform .55s cubic-bezier(.2,.9,.3,1), opacity .4s ease;
+    opacity: 0;
+  }
+
+  .modal.show { transform: translate(-50%, 0) translateZ(60px); opacity: 1; }
+
+  .modal-amount {
+    font-size: 1.55rem;
+    font-weight: 800;
+    letter-spacing: -.03em;
+    font-variant-numeric: tabular-nums;
+    color: var(--gold);
+  }
+
+  .demo-ctl { display: flex; align-items: center; gap: .7rem; margin-top: 1rem; flex-wrap: wrap; }
+
+  .btn {
+    font-family: var(--mono);
+    font-size: .7rem;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    padding: .5rem .9rem;
+    border-radius: 999px;
+    border: 1px solid rgba(59,240,206,.35);
+    background: rgba(59,240,206,.1);
+    color: var(--mint);
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-block;
+    transition: background .2s ease, transform .2s ease;
+  }
+
+  .btn:hover { background: rgba(59,240,206,.2); transform: translateY(-1px); }
+  .btn:active { transform: translateY(0); }
+
+  .ticker { font-family: var(--mono); font-size: .68rem; color: var(--faint); letter-spacing: .05em; }
+
+  /* ---------- compteurs ---------- */
+
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    border-radius: 1rem;
+    overflow: hidden;
+  }
+
+  .stat { background: var(--deep); padding: 1.2rem 1.1rem; }
+
+  .stat-n {
+    font-size: 1.85rem;
+    font-weight: 800;
+    letter-spacing: -.04em;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+
+  .stat-l {
+    font-family: var(--mono);
+    font-size: .63rem;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--faint);
+    margin-top: .45rem;
+  }
+
+  /* ---------- sections ---------- */
+
+  section { padding: clamp(3.5rem, 8vw, 6.5rem) 0; }
+
+  .sec-head { display: flex; flex-direction: column; gap: .9rem; max-width: 46rem; }
+
+  /* ---------- postes en 3D ---------- */
+
+  .desks { display: grid; gap: 1.2rem; margin-top: 2.75rem; perspective: 1200px; }
+
+  @media (min-width: 56rem) { .desks { grid-template-columns: repeat(3, 1fr); } }
+
+  .desk {
+    padding: 1.5rem;
+    transform-style: preserve-3d;
+    transition: transform .5s cubic-bezier(.2,.8,.3,1), border-color .4s ease, box-shadow .4s ease;
+  }
+
+  .desk:hover {
+    transform: translateY(-8px) rotateX(6deg) rotateY(-5deg);
+    border-color: rgba(59,240,206,.4);
+    box-shadow: 0 30px 60px -25px rgba(0,0,0,.9), 0 0 50px -25px rgba(20,184,166,.6);
+  }
+
+  .desk-num { font-family: var(--mono); font-size: .66rem; letter-spacing: .16em; color: var(--gold); }
+
+  .desk ul { margin: .3rem 0 0; padding-left: 1.05rem; color: var(--muted); font-size: .92rem; line-height: 1.6; }
+  .desk li + li { margin-top: .3rem; }
+
+  /* ---------- parcours ---------- */
+
+  .journey { margin-top: 2.75rem; display: grid; gap: 0; }
+
+  .step {
+    display: grid;
+    grid-template-columns: 3rem minmax(0, 1fr);
+    gap: 1.2rem;
+    padding-bottom: 1.9rem;
+    position: relative;
+  }
+
+  .step::before {
+    content: "";
+    position: absolute;
+    left: 1.18rem;
+    top: 2.3rem;
+    bottom: 0;
+    width: 1px;
+    background: linear-gradient(180deg, rgba(59,240,206,.45), rgba(59,240,206,.05));
+  }
+
+  .step:last-child { padding-bottom: 0; }
+  .step:last-child::before { display: none; }
+
+  .step-n {
+    width: 2.35rem; height: 2.35rem;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    font-family: var(--mono);
+    font-size: .82rem;
+    font-variant-numeric: tabular-nums;
+    background: var(--deep);
+    border: 1px solid rgba(59,240,206,.35);
+    color: var(--mint);
+    position: relative;
+    z-index: 1;
+  }
+
+  .step:last-child .step-n {
+    border-color: rgba(255,176,32,.5);
+    color: var(--gold);
+    box-shadow: 0 0 22px -6px var(--gold);
+  }
+
+  .step-d { color: var(--muted); font-size: .97rem; margin-top: .25rem; max-width: 56ch; }
+
+  /* ---------- capacités ---------- */
+
+  .feats { display: grid; gap: 1.1rem; margin-top: 2.75rem; perspective: 1200px; }
+
+  @media (min-width: 44rem) { .feats { grid-template-columns: repeat(2, 1fr); } }
+  @media (min-width: 68rem) { .feats { grid-template-columns: repeat(3, 1fr); } }
+
+  .feat {
+    padding: 1.4rem;
+    display: flex;
+    flex-direction: column;
+    gap: .55rem;
+    transition: transform .45s cubic-bezier(.2,.8,.3,1), border-color .4s ease;
+  }
+
+  .feat:hover { transform: translateY(-6px) rotateX(5deg); border-color: rgba(255,176,32,.35); }
+
+  .feat p { color: var(--muted); font-size: .93rem; }
+
+  /* ---------- bandeau cinéma ---------- */
+  /* Conçu pour tenir debout sans vidéo : le dégradé animé et le voile
+     forment déjà l'image. Un clip vient simplement se glisser dessous. */
+
+  .pull {
+    font-size: clamp(1.55rem, 4.4vw, 3.1rem);
+    font-weight: 800;
+    letter-spacing: -.035em;
+    line-height: 1.08;
+    max-width: 19ch;
+    margin-top: .9rem;
+  }
+
+  /* ---------- actes : chapitres plein écran ---------- */
+
+  .act {
+    position: relative;
+    min-height: 100vh;
+    min-height: 100svh;
+    display: grid;
+    align-items: center;
+    overflow: hidden;
+    isolation: isolate;
+  }
+
+  /* La vidéo reste invisible tant qu'elle n'a pas de contenu jouable :
+     un fichier manquant laisse simplement le dégradé en place. */
+  .act-media {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    /* Doit passer AU-DESSUS de .act-fallback, qui le suit dans le DOM :
+       a z-index egal, c'est le dernier element qui gagne. */
+    z-index: 1;
+    opacity: 0;
+    transform: scale(1.06);
+    transition: opacity 1.4s ease;
+  }
+
+  .act-media.ready { opacity: 1; }
+
+  .act-fallback {
+    position: absolute;
+    inset: -25%;
+    z-index: 0;
+    background:
+      radial-gradient(40% 34% at 28% 26%, rgba(20,184,166,.5), transparent 68%),
+      radial-gradient(36% 30% at 74% 62%, rgba(255,176,32,.3), transparent 66%),
+      radial-gradient(48% 40% at 52% 88%, rgba(59,240,206,.26), transparent 70%),
+      linear-gradient(160deg, #0A2620, #04100E 66%);
+    filter: blur(26px);
+    animation: drift 22s ease-in-out infinite alternate;
+  }
+
+  .act:nth-of-type(2) .act-fallback { animation-delay: -7s; }
+  .act:nth-of-type(3) .act-fallback { animation-delay: -14s; }
+
+  @keyframes drift {
+    from { transform: translate3d(-4%, -3%, 0) scale(1.05); }
+    to   { transform: translate3d(5%, 4%, 0) scale(1.18); }
+  }
+
+  /* Double voile : vertical pour fondre l'acte dans la page,
+     horizontal pour garantir la lisibilité du texte à gauche. */
+  .act-veil {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    background:
+      linear-gradient(180deg,
+        var(--void) 0%,
+        rgba(4,16,14,.16) 13%,
+        rgba(4,16,14,.20) 78%,
+        var(--void) 100%),
+      linear-gradient(90deg,
+        rgba(4,16,14,.78) 0%,
+        rgba(4,16,14,.34) 46%,
+        rgba(4,16,14,0) 100%);
+  }
+
+  .act-in {
+    position: relative;
+    z-index: 3;
+    padding-top: clamp(4rem, 12vh, 8rem);
+    padding-bottom: clamp(4rem, 12vh, 8rem);
+    max-width: 34rem;
+  }
+
+  .act-time {
+    font-family: var(--mono);
+    font-size: .72rem;
+    letter-spacing: .3em;
+    color: var(--gold);
+  }
+
+  .act-title {
+    font-size: clamp(2.2rem, 6.4vw, 4.4rem);
+    font-weight: 800;
+    letter-spacing: -.04em;
+    line-height: 1.02;
+    margin-top: .9rem;
+  }
+
+  .act-line {
+    margin-top: 1.2rem;
+    font-size: clamp(1rem, 1.9vw, 1.18rem);
+    color: rgba(234,251,247,.82);
+    max-width: 42ch;
+    text-shadow: 0 1px 20px rgba(0,0,0,.6);
+  }
+
+  /* Entrée décalée des lignes de l'acte. */
+  .act-in > * {
+    opacity: 0;
+    transform: translateY(28px);
+    transition: opacity 1s ease, transform 1s cubic-bezier(.2,.8,.3,1);
+  }
+
+  .act.seen .act-in > * { opacity: 1; transform: none; }
+  .act.seen .act-in > *:nth-child(1) { transition-delay: .08s; }
+  .act.seen .act-in > *:nth-child(2) { transition-delay: .22s; }
+  .act.seen .act-in > *:nth-child(3) { transition-delay: .38s; }
+
+  /* ---------- jauge de progression ---------- */
+
+  .progress {
+    position: fixed;
+    top: 0; left: 0;
+    height: 2px;
+    width: 0;
+    z-index: 60;
+    background: linear-gradient(90deg, var(--mint), var(--gold));
+    box-shadow: 0 0 12px rgba(59,240,206,.6);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .act-fallback { animation: none; }
+    .act-in > * { opacity: 1; transform: none; transition: none; }
+  }
+
+  /* ---------- arbre de données ---------- */
+
+  .tree-wrap { margin-top: 2.25rem; overflow-x: auto; }
+
+  pre.tree {
+    margin: 0;
+    padding: 1.4rem 1.3rem;
+    font-family: var(--mono);
+    font-size: .78rem;
+    line-height: 1.85;
+    color: var(--muted);
+    white-space: pre;
+  }
+
+  pre.tree b { color: var(--mint); font-weight: 500; }
+  pre.tree i { color: var(--faint); font-style: normal; }
+
+  /* ---------- avant / après ---------- */
+
+  .ba { display: grid; gap: 1.1rem; margin-top: 2.25rem; }
+  @media (min-width: 44rem) { .ba { grid-template-columns: 1fr 1fr; } }
+
+  .ba-cell { padding: 1.4rem; }
+  .ba-k { font-family: var(--mono); font-size: .64rem; letter-spacing: .15em; text-transform: uppercase; color: var(--faint); }
+  .ba-v { margin-top: .6rem; font-size: 1.05rem; font-weight: 700; letter-spacing: -.015em; line-height: 1.35; }
+  .ba-cell.bad .ba-v { color: var(--coral); }
+  .ba-cell.good .ba-v { color: var(--mint); }
+
+  .meter { margin-top: .9rem; height: .4rem; border-radius: 999px; background: rgba(255,255,255,.06); overflow: hidden; }
+  .meter i { display: block; height: 100%; border-radius: 999px; width: 0; transition: width 1.4s cubic-bezier(.2,.8,.3,1); }
+  .ba-cell.bad .meter i { background: linear-gradient(90deg, var(--coral), #FF9C8B); }
+  .ba-cell.good .meter i { background: linear-gradient(90deg, var(--teal), var(--mint)); }
+
+  /* ---------- signature ---------- */
+
+  .sig { padding: clamp(3rem, 7vw, 5rem) 0 clamp(2.5rem, 5vw, 4rem); border-top: 1px solid var(--line); }
+
+  .sig-in { display: flex; flex-wrap: wrap; gap: 2rem; justify-content: space-between; align-items: flex-end; }
+
+  .sig-name { font-size: clamp(1.8rem, 5vw, 2.9rem); font-weight: 800; letter-spacing: -.04em; margin-top: .5rem; }
+
+  .sig-stamp {
+    font-family: var(--mono);
+    font-size: .66rem;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--faint);
+    line-height: 2.1;
+    text-align: right;
+  }
+
+  /* ---------- révélation ---------- */
+
+  .reveal { opacity: 0; transform: translateY(22px); transition: opacity .75s ease, transform .75s cubic-bezier(.2,.8,.3,1); }
+  .reveal.seen { opacity: 1; transform: none; }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .reveal { opacity: 1; transform: none; transition: none; }
+    .brand-dot { animation: none; }
+    .row { animation: none; }
+  }
+</style>
+
+<div class="progress" id="progress" aria-hidden="true"></div>
+<canvas id="ecg" aria-hidden="true"></canvas>
+<div class="aura aura-a" aria-hidden="true"></div>
+<div class="aura aura-b" aria-hidden="true"></div>
+
+<div class="page">
+
+  <div class="topbar">
+    <div class="container topbar-in">
+      <div class="brand">
+        <span class="brand-dot"></span>
+        Ordimed
+      </div>
+      <div class="flex items-center gap-4">
+        <span class="topbar-name text-xs font-mono text-faint uppercase tracking-wide">Zaouali Chems Eddine</span>
+        <a href="#demo" class="btn">Voir la démo</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== HÉROS ===================== -->
+  <header class="hero">
+    <div class="container hero-grid">
+
+      <div class="flex flex-col gap-6">
+        <div class="eyebrow">Logiciel de cabinet médical · Windows</div>
+
+        <h1 class="h-display">
+          Le cabinet entier,<br>
+          <span class="glow-text">d'un seul écran.</span>
+        </h1>
+
+        <p class="prose text-lg">
+          De la fiche d'accueil à l'ordonnance imprimée : salle d'attente en temps réel, séances,
+          règlements et caisse du jour. Trois postes, une seule base, zéro ressaisie.
+        </p>
+
+        <div class="flex flex-wrap gap-2">
+          <span class="chip">Flutter · Dart</span>
+          <span class="chip">Firebase</span>
+          <span class="chip">Firestore temps réel</span>
+          <span class="chip">PDF · impression</span>
+        </div>
+
+        <div class="flex items-baseline gap-3 mt-2">
+          <span class="text-xs font-mono uppercase tracking-wide text-faint">Conçu et développé par</span>
+          <span class="text-gold font-bold" style="font-size:1.1rem; letter-spacing:-.02em">Zaouali Chems Eddine</span>
+        </div>
+      </div>
+
+      <!-- maquette 3D animée -->
+      <div id="demo" class="stage">
+        <div class="deck" id="deck">
+          <div class="screen relative">
+            <div class="screen-bar">
+              <span class="dot" style="background:#FF5F57"></span>
+              <span class="dot" style="background:#FEBC2E"></span>
+              <span class="dot" style="background:#28C840"></span>
+              <span class="screen-title">ORDIMED — POSTE ASSISTANT</span>
+            </div>
+
+            <div class="screen-body">
+              <div class="till">
+                <div>
+                  <div class="text-xs font-mono uppercase tracking-wide text-faint">Recette du jour</div>
+                  <div class="till-n"><span id="till">0</span> DA</div>
+                </div>
+                <div class="text-right">
+                  <div class="text-xs font-mono uppercase tracking-wide text-faint">En file</div>
+                  <div class="till-n tabular" id="queue-count">0</div>
+                </div>
+              </div>
+
+              <div class="text-xs font-mono uppercase tracking-wide text-faint">Salle d'attente</div>
+              <div class="queue" id="queue"></div>
+            </div>
+
+            <div class="modal" id="modal">
+              <div class="text-xs font-mono uppercase tracking-wide text-faint">Versement</div>
+              <div class="modal-amount"><span id="pay">0</span> DA</div>
+              <div class="text-xs text-muted mt-1">Séance 3 / 10 — reste 4 500 DA</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="demo-ctl">
+          <button class="btn" id="toggle" type="button">Pause</button>
+          <span class="ticker" id="ticker">Reconstitution animée de l'interface</span>
+        </div>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- ===================== CHIFFRES ===================== -->
+  <div class="container">
+    <div class="stats reveal">
+      <div class="stat"><div class="stat-n text-mint" data-count="3">0</div><div class="stat-l">rôles métier</div></div>
+      <div class="stat"><div class="stat-n" data-count="14600">0</div><div class="stat-l">lignes de Dart</div></div>
+      <div class="stat"><div class="stat-n" data-count="9">0</div><div class="stat-l">collections</div></div>
+      <div class="stat"><div class="stat-n" data-count="2">0</div><div class="stat-l">niveaux d'accès</div></div>
+      <div class="stat"><div class="stat-n text-gold" data-count="100" data-suffix=" %">0</div><div class="stat-l">temps réel</div></div>
+    </div>
+  </div>
+
+  <!-- ===================== ACTE I — 08:00 ===================== -->
+  <!--
+    Les vidéos sont lues depuis ce dossier : cabinet-1.mp4, cabinet-2.mp4,
+    cabinet-3.mp4. Chaque acte bascule seul sur son dégradé animé si le
+    fichier manque — aucun rectangle noir possible. Chaque clip ne se lance
+    qu'en entrant dans le champ, et se met en pause en sortant.
+  -->
+  <div class="act">
+    <video class="act-media" src="cabinet-1.mp4"
+           muted loop playsinline preload="metadata" aria-hidden="true"></video>
+    <div class="act-fallback" aria-hidden="true"></div>
+    <div class="act-veil" aria-hidden="true"></div>
+    <div class="container act-in">
+      <div class="act-time">08:00</div>
+      <h2 class="act-title">La porte s'ouvre.</h2>
+      <p class="act-line">
+        Le premier patient arrive avant l'assistant. À huit heures, le cabinet n'a pas besoin d'un
+        logiciel : il a besoin qu'on inscrive cette personne en dix secondes et qu'elle puisse
+        s'asseoir.
+      </p>
+    </div>
+  </div>
+
+  <!-- ===================== PROBLÈME ===================== -->
+  <section>
+    <div class="container">
+      <div class="sec-head reveal">
+        <div class="eyebrow">Le problème</div>
+        <h2 class="h-section">Un cabinet fonctionne à trois postes, pas à un seul</h2>
+        <p class="prose">
+          L'assistant accueille et encaisse. Le médecin consulte et prescrit. Le directeur veut savoir
+          ce que la journée a rapporté. Les trois travaillent sur le même patient, en même temps, et
+          chacun a besoin d'une vue différente.
+        </p>
+        <p class="prose">
+          La plupart des cabinets tiennent ça sur un cahier et un tableur : le patient est réinscrit à
+          chaque passage, les séances se comptent de tête, et personne ne sait le soir combien la caisse
+          a fait. Ordimed remplace l'ensemble par un poste de travail par rôle, sur une base partagée qui
+          se met à jour en direct.
+        </p>
+      </div>
+
+      <div class="desks">
+        <article class="glass desk reveal">
+          <div class="desk-num">POSTE 01</div>
+          <h3 class="h-card mt-2">Assistant</h3>
+          <ul>
+            <li>Création des dossiers patients</li>
+            <li>Salle d'attente en direct</li>
+            <li>Encaissement des versements</li>
+            <li>Rendez-vous et rappels</li>
+            <li>Achats du cabinet</li>
+          </ul>
+        </article>
+
+        <article class="glass desk reveal">
+          <div class="desk-num">POSTE 02</div>
+          <h3 class="h-card mt-2">Médecin</h3>
+          <ul>
+            <li>Ses patients, sa file d'attente</li>
+            <li>Formulaires personnalisables</li>
+            <li>Ordonnances et bilans</li>
+            <li>Suivi des séances</li>
+            <li>Recette de sa semaine</li>
+          </ul>
+        </article>
+
+        <article class="glass desk reveal">
+          <div class="desk-num">POSTE 03</div>
+          <h3 class="h-card mt-2">Directeur</h3>
+          <ul>
+            <li>Tous les patients du cabinet</li>
+            <li>Caisse, achats, résultat net</li>
+            <li>Détail par médecin</li>
+            <li>Courbe hebdomadaire</li>
+            <li>Gestion des accès</li>
+          </ul>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== ACTE II — 11:30 ===================== -->
+  <div class="act">
+    <video class="act-media" src="cabinet-2.mp4"
+           muted loop playsinline preload="metadata" aria-hidden="true"></video>
+    <div class="act-fallback" aria-hidden="true"></div>
+    <div class="act-veil" aria-hidden="true"></div>
+    <div class="container act-in">
+      <div class="act-time">11:30</div>
+      <h2 class="act-title">Le médecin appelle.</h2>
+      <p class="act-line">
+        Entre deux consultations, personne ne cherche un dossier. Il est déjà ouvert, à jour, avec
+        les séances restantes et le dernier bilan — parce que l'accueil l'a rempli une seule fois,
+        ce matin.
+      </p>
+    </div>
+  </div>
+
+  <!-- ===================== PARCOURS ===================== -->
+  <section>
+    <div class="container">
+      <div class="sec-head reveal">
+        <div class="eyebrow">Parcours</div>
+        <h2 class="h-section">Une journée de cabinet, du premier patient à la clôture</h2>
+        <p class="prose">La colonne vertébrale du logiciel : une seule chaîne, que les trois postes voient avancer en direct.</p>
+      </div>
+
+      <ol class="journey list-none">
+        <li class="step reveal">
+          <div class="step-n">1</div>
+          <div>
+            <h3 class="h-card">Accueil</h3>
+            <p class="step-d">L'assistant ouvre le dossier — identité, motif, médecin attribué. Il apparaît immédiatement chez le médecin choisi.</p>
+          </div>
+        </li>
+        <li class="step reveal">
+          <div class="step-n">2</div>
+          <div>
+            <h3 class="h-card">Salle d'attente</h3>
+            <p class="step-d">Le patient entre en file. Assistant, médecin et directeur voient la même liste se remplir. Un même patient ne peut pas y figurer deux fois.</p>
+          </div>
+        </li>
+        <li class="step reveal">
+          <div class="step-n">3</div>
+          <div>
+            <h3 class="h-card">Consultation</h3>
+            <p class="step-d">Le médecin appelle le patient, remplit son formulaire, édite l'ordonnance ou le bilan et l'imprime. La séance est décomptée du forfait.</p>
+          </div>
+        </li>
+        <li class="step reveal">
+          <div class="step-n">4</div>
+          <div>
+            <h3 class="h-card">Règlement</h3>
+            <p class="step-d">L'assistant enregistre le versement. Le reste à payer se recalcule, la recette du jour se met à jour dans la seconde.</p>
+          </div>
+        </li>
+        <li class="step reveal">
+          <div class="step-n">5</div>
+          <div>
+            <h3 class="h-card">Clôture</h3>
+            <p class="step-d">Un bouton ferme toute la file. Le directeur lit la caisse, les achats et le résultat net sans rien ressaisir.</p>
+          </div>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- ===================== CAPACITÉS ===================== -->
+  <section>
+    <div class="container">
+      <div class="sec-head reveal">
+        <div class="eyebrow">Ce que ça produit</div>
+        <h2 class="h-section">Des documents qu'on peut vraiment donner au patient</h2>
+      </div>
+
+      <div class="feats">
+        <article class="glass feat reveal">
+          <h3 class="h-card">Ordonnances bilingues</h3>
+          <p>En-tête du praticien en français et en arabe — nom, spécialité, wilaya, adresse, téléphone — avec numérotation automatique. Générées en PDF, imprimables directement.</p>
+        </article>
+        <article class="glass feat reveal">
+          <h3 class="h-card">Bilans et formulaires</h3>
+          <p>Antécédents, habitudes de vie, mesures, objectifs. Chaque médecin définit ses propres modèles de champs et les réutilise d'un patient à l'autre.</p>
+        </article>
+        <article class="glass feat reveal">
+          <h3 class="h-card">Rappels WhatsApp</h3>
+          <p>Un message type paramétrable par le cabinet, envoyé au patient en un clic depuis la fiche du rendez-vous.</p>
+        </article>
+        <article class="glass feat reveal">
+          <h3 class="h-card">Caisse du jour</h3>
+          <p>Versements, achats, résultat net, ventilation par médecin et courbe des sept derniers jours. Montants en dinars.</p>
+        </article>
+        <article class="glass feat reveal">
+          <h3 class="h-card">Suivi des forfaits</h3>
+          <p>Séances vendues, séances effectuées, total réglé et reste à payer, tenus à jour à chaque passage en consultation.</p>
+        </article>
+        <article class="glass feat reveal">
+          <h3 class="h-card">Thème clair et sombre</h3>
+          <p>L'interface entière est déclinée dans les deux modes, plus un mode allégé pour les postes anciens.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== ACTE III — 18:00 ===================== -->
+  <div class="act">
+    <video class="act-media" src="cabinet-3.mp4"
+           muted loop playsinline preload="metadata" aria-hidden="true"></video>
+    <div class="act-fallback" aria-hidden="true"></div>
+    <div class="act-veil" aria-hidden="true"></div>
+    <div class="container act-in">
+      <div class="act-time">18:00</div>
+      <h2 class="act-title">On ferme.</h2>
+      <p class="act-line">
+        Un bouton clôt la file. La caisse est faite, les séances décomptées, les rendez-vous de
+        demain déjà envoyés. Personne ne reste une heure de plus à recopier un cahier.
+      </p>
+    </div>
+  </div>
+
+  <!-- ===================== ARCHITECTURE ===================== -->
+  <section>
+    <div class="container">
+      <div class="sec-head reveal">
+        <div class="eyebrow">Architecture</div>
+        <h2 class="h-section">Sous le capot</h2>
+        <p class="prose">
+          Application Flutter compilée en natif pour Windows, branchée directement sur Firebase —
+          authentification et base temps réel. Pas de serveur intermédiaire à administrer : le cabinet
+          installe l'application, et les postes se synchronisent entre eux.
+        </p>
+      </div>
+
+      <div class="glass tree-wrap reveal">
+<pre class="tree"><b>users/{cabinet}</b>
+ ├── <b>comptes/{profil}</b>            <i>rôle, code d'accès, en-tête d'ordonnance</i>
+ │    ├── <b>patients/{patient}</b>     <i>identité, forfait, versements, séances</i>
+ │    │    └── <b>forms/{document}</b>  <i>bilans, ordonnances, formulaires</i>
+ │    ├── <b>salle_attente/{ligne}</b>  <i>en attente · en consultation · reçu</i>
+ │    ├── <b>rendezvous/{rdv}</b>       <i>date, motif, rappel envoyé</i>
+ │    └── <b>purchases/{achat}</b>      <i>dépenses du cabinet</i>
+ └── <b>daily_stats/{jour}</b>          <i>recettes, achats, net, détail par médecin</i></pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== INGÉNIERIE ===================== -->
+  <section>
+    <div class="container">
+      <div class="sec-head reveal">
+        <div class="eyebrow">Ingénierie</div>
+        <h2 class="h-section">Le jour où l'application s'est mise à geler</h2>
+        <p class="prose">
+          Chez les cabinets les plus chargés, l'écran de direction se figeait puis se fermait tout seul.
+          Le diagnostic : pour afficher la recette du jour, l'application téléchargeait l'intégralité des
+          dossiers patients et en additionnait les règlements à chaque rafraîchissement — des milliers de
+          documents parcourus sur le fil d'affichage.
+        </p>
+      </div>
+
+      <div class="ba">
+        <div class="glass ba-cell bad reveal">
+          <div class="ba-k">Avant</div>
+          <div class="ba-v">Toute la base relue à chaque affichage</div>
+          <div class="meter"><i data-fill="100"></i></div>
+        </div>
+        <div class="glass ba-cell good reveal">
+          <div class="ba-k">Après</div>
+          <div class="ba-v">1 à 7 documents d'agrégats lus</div>
+          <div class="meter"><i data-fill="6"></i></div>
+        </div>
+      </div>
+
+      <p class="prose mt-8 reveal">
+        Le correctif n'a pas consisté à optimiser la boucle, mais à la supprimer : les totaux sont
+        désormais calculés <strong style="color:var(--text)">au moment de l'encaissement</strong>,
+        incrémentés dans un document par journée, puis simplement lus par les écrans. Le coût d'affichage
+        est devenu constant, quel que soit le nombre de patients dans la base.
+      </p>
+    </div>
+  </section>
+
+  <!-- ===================== SIGNATURE ===================== -->
+  <footer class="sig">
+    <div class="container sig-in">
+      <div>
+        <div class="eyebrow">Conception, développement et design</div>
+        <div class="sig-name glow-text">Zaouali Chems Eddine</div>
+        <p class="prose mt-3" style="max-width:42ch">
+          Ordimed est développé en solo, du modèle de données à l'interface, jusqu'à l'installateur remis
+          au cabinet.
+        </p>
+      </div>
+      <div class="sig-stamp">
+        Flutter · Dart<br>
+        Firebase · Firestore<br>
+        Windows desktop
+      </div>
+    </div>
+  </footer>
+
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ---------- fond : tracé ECG ---------- */
+  (function ecg() {
+    var cv = document.getElementById('ecg');
+    if (!cv) return;
+    var ctx = cv.getContext('2d');
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var w = 0, h = 0, t = 0;
+
+    function resize() {
+      w = cv.clientWidth; h = cv.clientHeight;
+      cv.width = w * dpr; cv.height = h * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    // Un battement : ligne plate, puis complexe QRS.
+    function beat(x) {
+      var p = x - Math.floor(x);
+      if (p < 0.42) return 0;
+      if (p < 0.46) return -0.10;
+      if (p < 0.50) return 0.92;
+      if (p < 0.54) return -0.45;
+      if (p < 0.60) return 0.06;
+      if (p < 0.66) return 0.20;
+      return 0;
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, w, h);
+      var mid = h * 0.62;
+      var amp = Math.min(h * 0.13, 90);
+      var span = 260;
+
+      ctx.beginPath();
+      for (var x = 0; x <= w; x += 2) {
+        var y = mid - beat((x + t) / span) * amp;
+        if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      var g = ctx.createLinearGradient(0, 0, w, 0);
+      g.addColorStop(0, 'rgba(59,240,206,0)');
+      g.addColorStop(0.4, 'rgba(59,240,206,0.30)');
+      g.addColorStop(1, 'rgba(255,176,32,0.14)');
+      ctx.strokeStyle = g;
+      ctx.lineWidth = 1.4;
+      ctx.shadowColor = 'rgba(59,240,206,0.55)';
+      ctx.shadowBlur = 14;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      t += 1.1;
+      if (!reduced) requestAnimationFrame(draw);
+    }
+
+    window.addEventListener('resize', function () { resize(); if (reduced) draw(); });
+    resize();
+    draw();
+  })();
+
+  /* ---------- parallaxe 3D de la maquette ---------- */
+  (function tilt() {
+    var deck = document.getElementById('deck');
+    if (!deck) return;
+    deck.style.transform = 'rotateX(4deg) rotateY(-9deg)';
+    if (reduced) return;
+
+    var rx = 4, ry = -9, tx = 4, ty = -9, raf = null;
+
+    function loop() {
+      rx += (tx - rx) * 0.08;
+      ry += (ty - ry) * 0.08;
+      deck.style.transform = 'rotateX(' + rx.toFixed(2) + 'deg) rotateY(' + ry.toFixed(2) + 'deg)';
+      if (Math.abs(tx - rx) > 0.01 || Math.abs(ty - ry) > 0.01) {
+        raf = requestAnimationFrame(loop);
+      } else {
+        raf = null;
+      }
+    }
+
+    window.addEventListener('pointermove', function (e) {
+      var cx = window.innerWidth / 2, cy = window.innerHeight / 2;
+      ty = -9 + ((e.clientX - cx) / cx) * 7;
+      tx = 4 - ((e.clientY - cy) / cy) * 6;
+      if (!raf) raf = requestAnimationFrame(loop);
+    }, { passive: true });
+  })();
+
+  /* ---------- démo animée : la salle d'attente ---------- */
+  (function demo() {
+    var queue   = document.getElementById('queue');
+    var tillEl  = document.getElementById('till');
+    var countEl = document.getElementById('queue-count');
+    var modal   = document.getElementById('modal');
+    var payEl   = document.getElementById('pay');
+    var ticker  = document.getElementById('ticker');
+    var toggle  = document.getElementById('toggle');
+    if (!queue) return;
+
+    var people = [
+      { i: 'AB', n: 'Amina B.',  m: 'Suivi — Dr Meriem' },
+      { i: 'YK', n: 'Youcef K.', m: 'Contrôle — Dr Karim' },
+      { i: 'SL', n: 'Sofia L.',  m: 'Première visite — Dr Meriem' }
+    ];
+
+    var till = 0, timer = null, step = 0, running = true;
+
+    function money(n) { return n.toLocaleString('fr-FR'); }
+
+    function count() {
+      countEl.textContent = queue.querySelectorAll('.row:not(.leaving)').length;
+    }
+
+    function addRow(p) {
+      var el = document.createElement('div');
+      el.className = 'row';
+      el.setAttribute('data-id', p.i);
+      el.innerHTML =
+        '<div class="avatar">' + p.i + '</div>' +
+        '<div class="flex-1"><div class="row-name">' + p.n + '</div>' +
+        '<div class="row-meta">' + p.m + '</div></div>' +
+        '<div class="status st-wait">en attente</div>';
+      queue.appendChild(el);
+      count();
+    }
+
+    function setStatus(id, cls, label) {
+      var el = queue.querySelector('.row[data-id="' + id + '"] .status');
+      if (!el) return;
+      el.className = 'status ' + cls;
+      el.textContent = label;
+    }
+
+    function removeRow(id) {
+      var row = queue.querySelector('.row[data-id="' + id + '"]');
+      if (!row) return;
+      row.classList.add('leaving');
+      count();
+      setTimeout(function () { if (row.parentNode) row.parentNode.removeChild(row); }, 520);
+    }
+
+    function countUp(el, from, to, ms) {
+      var t0 = performance.now();
+      (function frame(now) {
+        var k = Math.min((now - t0) / ms, 1);
+        var e = 1 - Math.pow(1 - k, 3);
+        el.textContent = money(Math.round(from + (to - from) * e));
+        if (k < 1) requestAnimationFrame(frame);
+      })(t0);
+    }
+
+    // Scénario : [délai avant l'étape, action, légende]
+    var script = [
+      [600,  function () { addRow(people[0]); }, 'Patient inscrit à l\'accueil'],
+      [1500, function () { addRow(people[1]); }, 'Second patient en file'],
+      [1500, function () { setStatus('AB', 'st-live', 'en consultation'); }, 'Le médecin appelle le patient'],
+      [1600, function () { addRow(people[2]); }, 'La file continue de se remplir'],
+      [1400, function () { modal.classList.add('show'); countUp(payEl, 0, 3500, 900); }, 'Encaissement du versement'],
+      [1900, function () { countUp(tillEl, till, till + 3500, 900); till += 3500; }, 'La recette du jour se met à jour'],
+      [1200, function () { modal.classList.remove('show'); setStatus('AB', 'st-done', 'reçu'); }, 'Séance décomptée du forfait'],
+      [1200, function () { removeRow('AB'); }, 'Patient sorti de la file'],
+      [1400, function () { setStatus('YK', 'st-live', 'en consultation'); }, 'Au suivant'],
+      [2400, function () { reset(); }, 'Reconstitution animée de l\'interface']
+    ];
+
+    function reset() {
+      queue.innerHTML = '';
+      till = 0;
+      tillEl.textContent = '0';
+      payEl.textContent = '0';
+      modal.classList.remove('show');
+      count();
+      step = 0;
+    }
+
+    function tick() {
+      if (!running) return;
+      var entry = script[step % script.length];
+      timer = setTimeout(function () {
+        entry[1]();
+        if (ticker) ticker.textContent = entry[2];
+        step++;
+        tick();
+      }, entry[0]);
+    }
+
+    if (reduced) {
+      // Sans animation : un état final lisible et statique.
+      addRow(people[0]); addRow(people[1]); addRow(people[2]);
+      setStatus('AB', 'st-live', 'en consultation');
+      tillEl.textContent = money(3500);
+      if (toggle) toggle.style.display = 'none';
+      if (ticker) ticker.textContent = 'Aperçu de l\'interface';
+      return;
+    }
+
+    if (toggle) {
+      toggle.addEventListener('click', function () {
+        running = !running;
+        toggle.textContent = running ? 'Pause' : 'Reprendre';
+        if (running) { tick(); } else { clearTimeout(timer); }
+      });
+    }
+
+    reset();
+    tick();
+  })();
+
+  /* ---------- actes : le clip ne tourne que dans le champ ---------- */
+  (function acts() {
+    var list = document.querySelectorAll('.act');
+    if (!list.length) return;
+
+    function wire(act) {
+      var v = act.querySelector('.act-media');
+      if (!v) return null;
+
+      // Fichier absent, format refusé, requête bloquée : on retire l'élément
+      // et le dégradé animé de l'acte reste seul à l'écran.
+      function drop() {
+        if (v.parentNode) v.parentNode.removeChild(v);
+        v = null;
+      }
+
+      v.addEventListener('error', drop);
+
+      // Plusieurs points d'entrée : selon le navigateur et le moment où le
+      // fichier arrive, ce n'est pas toujours le même evenement qui tombe en
+      // premier. Le premier des trois suffit à révéler l'image.
+      function show() { if (v) v.classList.add('ready'); }
+      v.addEventListener('loadeddata', show);
+      v.addEventListener('canplay', show);
+      v.addEventListener('playing', show);
+
+      return v;
+    }
+
+    Array.prototype.forEach.call(list, function (act) {
+      var v = wire(act);
+
+      // Lire trois vidéos 4K en parallèle ferait ramer n'importe quelle machine :
+      // chacune ne démarre qu'en entrant dans le champ et se met en pause en sortant.
+      if (!('IntersectionObserver' in window)) {
+        act.classList.add('seen');
+        if (v) { v.play().catch(function () {}); }
+        return;
+      }
+
+      var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (en) {
+          var vid = act.querySelector('.act-media');
+          if (en.isIntersecting) {
+            act.classList.add('seen');
+            if (vid) {
+              var p = vid.play();
+              if (p && typeof p.catch === 'function') { p.catch(function () {}); }
+            }
+          } else if (vid) {
+            vid.pause();
+          }
+        });
+      }, { threshold: 0.22 });
+
+      io.observe(act);
+    });
+  })();
+
+  /* ---------- jauge de progression de lecture ---------- */
+  (function progress() {
+    var bar = document.getElementById('progress');
+    if (!bar) return;
+    var ticking = false;
+
+    function update() {
+      var doc = document.documentElement;
+      var max = doc.scrollHeight - window.innerHeight;
+      var k = max > 0 ? (window.scrollY / max) : 0;
+      bar.style.width = (Math.min(Math.max(k, 0), 1) * 100).toFixed(2) + '%';
+      ticking = false;
+    }
+
+    window.addEventListener('scroll', function () {
+      if (!ticking) { ticking = true; requestAnimationFrame(update); }
+    }, { passive: true });
+
+    window.addEventListener('resize', update, { passive: true });
+    update();
+  })();
+
+  /* ---------- révélation au défilement + compteurs ---------- */
+  (function reveal() {
+    var items = document.querySelectorAll('.reveal');
+
+    function countUp(el) {
+      var to = parseInt(el.getAttribute('data-count'), 10);
+      var suffix = el.getAttribute('data-suffix') || '';
+      if (isNaN(to)) return;
+      if (reduced) { el.textContent = to.toLocaleString('fr-FR') + suffix; return; }
+      var t0 = performance.now(), ms = 1100;
+      (function frame(now) {
+        var k = Math.min((now - t0) / ms, 1);
+        var e = 1 - Math.pow(1 - k, 3);
+        el.textContent = Math.round(to * e).toLocaleString('fr-FR') + suffix;
+        if (k < 1) requestAnimationFrame(frame);
+      })(t0);
+    }
+
+    function activate(el) {
+      el.classList.add('seen');
+      Array.prototype.forEach.call(el.querySelectorAll('[data-count]'), countUp);
+      Array.prototype.forEach.call(el.querySelectorAll('.meter i'), function (bar) {
+        setTimeout(function () { bar.style.width = bar.getAttribute('data-fill') + '%'; }, 220);
+      });
+    }
+
+    if (!('IntersectionObserver' in window) || reduced) {
+      Array.prototype.forEach.call(items, activate);
+      return;
+    }
+
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) {
+        if (en.isIntersecting) { activate(en.target); io.unobserve(en.target); }
+      });
+    }, { rootMargin: '0px 0px -8% 0px', threshold: 0.12 });
+
+    Array.prototype.forEach.call(items, function (el) { io.observe(el); });
+  })();
+
+})();
+</script>

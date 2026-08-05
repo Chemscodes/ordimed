@@ -1,0 +1,22 @@
+# Normalise les fins de ligne : LF dans le depot, natif dans la copie locale.
+# Evite qu'un projet edite sous Windows apparaisse entierement modifie ailleurs.
+* text=auto eol=lf
+
+# Fichiers binaires : jamais de conversion.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.ico  binary
+*.gif  binary
+*.mp4  binary
+*.ttf  binary
+*.otf  binary
+*.zip  binary
+*.msi  binary
+*.jks  binary
+*.keystore binary
+
+# Scripts Windows : CRLF obligatoire pour PowerShell et batch.
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf

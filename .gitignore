@@ -1,0 +1,73 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# The .vscode folder contains launch configuration and tasks you configure in
+# VS Code which you may wish to be included in version control, so this line
+# is commented out by default.
+#.vscode/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release
+
+# --- Ajouts Ordimed ---
+
+# Dossiers generes par Flutter pour chaque plateforme (245 Mo sur Windows).
+# Recrees automatiquement par `flutter pub get` / `flutter build`.
+**/flutter/ephemeral/
+**/Flutter/ephemeral/
+
+# Chemins machine-specifiques et caches de build Android
+/android/local.properties
+/android/.gradle/
+/android/app/.cxx/
+**/build/
+
+# Outillage WiX vendorise (134 Mo de binaires tiers).
+# A retelecharger depuis https://wixtoolset.org si besoin de l'installateur.
+/tools/
+
+# Sorties de l'installateur
+*.msi
+*.msix
+
+# Version autonome de la page : regeneree par presentation/build-standalone.ps1
+/presentation/index.html
+
+# Clips de fond de la page de presentation (~26 Mo de banque d'images tierce).
+# Voir presentation/README.md pour les retelecharger.
+/presentation/*.mp4
