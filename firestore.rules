@@ -23,10 +23,13 @@ service cloud.firestore {
 
     // Pour les requetes collectionGroup, le chemin ne porte plus l'uid :
     // c'est le champ parentUid du document qui fait foi.
+    //
+    // Volontairement reduit a la seule egalite : sur une requete, Firestore
+    // ne lit pas les documents un par un, il verifie statiquement que les
+    // filtres garantissent la regle. Un controle de type ne se prouve par
+    // aucun filtre et ferait refuser la requete entiere.
     function ownsDoc() {
-      return signedIn()
-             && resource.data.parentUid is string
-             && resource.data.parentUid == request.auth.uid;
+      return signedIn() && resource.data.parentUid == request.auth.uid;
     }
 
     // ---------------------------------------------------------
