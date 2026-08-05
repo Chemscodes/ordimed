@@ -1,3 +1,4 @@
+import '../ui/app_theme.dart';
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -18,6 +19,19 @@ import '../ui/app_shell.dart';
 import '../ui/fluent_button.dart';
 import '../ui/fluent_card.dart';
 import '../widgets/daily_versements_card.dart';
+
+/// Rend le contenu d'un dialogue defilable et borne sa hauteur.
+///
+/// Un `content: Column(...)` deborde des que la fenetre est courte ou que
+/// l'utilisateur agrandit la taille du texte. Cette enveloppe supprime la
+/// classe entiere de ces debordements verticaux.
+Widget _scrollableDialogContent(BuildContext context, Widget child) {
+  return ConstrainedBox(
+    constraints: BoxConstraints(maxHeight: AppTheme.dialogMaxHeight(context)),
+    child: SingleChildScrollView(child: child),
+  );
+}
+
 
 double _toDouble(dynamic v) {
   if (v is num) return v.toDouble();
@@ -86,7 +100,7 @@ class _DashboardAssistantState extends State<DashboardAssistant> {
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Nouvel achat'),
-        content: Column(
+        content: _scrollableDialogContent(context, Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
@@ -105,7 +119,7 @@ class _DashboardAssistantState extends State<DashboardAssistant> {
               decoration: const InputDecoration(labelText: 'Prix d\'achat'),
             ),
           ],
-        ),
+        )),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -352,7 +366,7 @@ class _DashboardAssistantState extends State<DashboardAssistant> {
       builder: (_) => StatefulBuilder(
         builder: (ctx, setState) => AlertDialog(
           title: const Text('Motifs de consultation'),
-          content: Column(
+          content: _scrollableDialogContent(context, Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -386,7 +400,7 @@ class _DashboardAssistantState extends State<DashboardAssistant> {
                 },
               ),
             ],
-          ),
+          )),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx, false),
@@ -543,7 +557,7 @@ class _DashboardAssistantState extends State<DashboardAssistant> {
       builder: (_) => StatefulBuilder(
         builder: (ctx, setState) => AlertDialog(
           title: const Text('Prototype par motif'),
-          content: Column(
+          content: _scrollableDialogContent(context, Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -570,7 +584,7 @@ class _DashboardAssistantState extends State<DashboardAssistant> {
                 ),
               ),
             ],
-          ),
+          )),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx, false),
@@ -916,7 +930,7 @@ class _PurchasesCard extends StatelessWidget {
       builder: (_) => AlertDialog(
         title: const Text('Historique des achats'),
         content: SizedBox(
-          width: 460,
+          width: AppTheme.dialogWidth(context, 460),
           height: 420,
           child: _PurchasesHistory(
             parentUid: parentUid,
@@ -2012,7 +2026,7 @@ class _AssistantRdvTabState extends State<_AssistantRdvTab> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Message WhatsApp'),
-        content: Column(
+        content: _scrollableDialogContent(context, Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -2031,7 +2045,7 @@ class _AssistantRdvTabState extends State<_AssistantRdvTab> {
               style: TextStyle(fontSize: 12),
             ),
           ],
-        ),
+        )),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -2306,7 +2320,7 @@ class _AssistantRdvTabState extends State<_AssistantRdvTab> {
               '${selectedTime.hour.toString().padLeft(2, '0')}:${selectedTime.minute.toString().padLeft(2, '0')}';
           return AlertDialog(
             title: const Text('Modifier rendez-vous'),
-            content: Column(
+            content: _scrollableDialogContent(context, Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -2355,7 +2369,7 @@ class _AssistantRdvTabState extends State<_AssistantRdvTab> {
                   ],
                 ),
               ],
-            ),
+            )),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
@@ -3206,7 +3220,7 @@ class _RendezVousTabState extends State<_RendezVousTab> {
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Ajouter un versement'),
-        content: Column(
+        content: _scrollableDialogContent(context, Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -3231,7 +3245,7 @@ class _RendezVousTabState extends State<_RendezVousTab> {
               ),
             ),
           ],
-        ),
+        )),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),

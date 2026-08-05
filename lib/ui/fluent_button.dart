@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
-import 'fluent_theme.dart';
+import 'app_theme.dart';
 
 enum FluentButtonType { primary, secondary, ghost }
 
-class FluentButton extends StatelessWidget {
+/// Bouton de l'application.
+///
+/// Trois états animés : repos, survol (léger éclaircissement et montée),
+/// appui (enfoncement). Le libellé est toujours contraint et tronqué —
+/// c'est ce qui empêche un texte long de faire déborder une barre d'actions.
+class FluentButton extends StatefulWidget {
   final String label;
   final IconData? icon;
   final VoidCallback? onPressed;
@@ -24,95 +29,118 @@ class FluentButton extends StatelessWidget {
   });
 
   @override
+  State<FluentButton> createState() => _FluentButtonState();
+}
+
+class _FluentButtonState extends State<FluentButton> {
+  bool _hover = false;
+  bool _pressed = false;
+
+  @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    Color bg;
-    Color fg;
-    BorderSide? border;
-    Gradient? gradient;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final enabled = widget.onPressed != null && !widget.isLoading;
 
-    switch (type) {
+    Color fg;
+    Color? bg;
+    Gradient? gradient;
+    BoxBorder? border;
+    List<BoxShadow> shadows = const [];
+
+    switch (widget.type) {
       case FluentButtonType.primary:
-        bg = scheme.primary;
-        fg = Colors.white;
-        gradient = LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            scheme.primary,
-            Color.lerp(scheme.primary, scheme.secondary, 0.35) ?? scheme.primary,
-          ],
-        );
+        fg = dark ? scheme.onPrimary : Colors.white;
+        gradient = AppTheme.brandGradient(context);
+        shadows = [
+          BoxShadow(
+            color: scheme.primary.withValues(alpha: _hover ? 0.45 : 0.28),
+            blurRadius: _hover ? 22 : 14,
+            offset: Offset(0, _hover ? 8 : 5),
+          ),
+        ];
         break;
       case FluentButtonType.secondary:
-        bg = scheme.secondary.withOpacity(0.12);
-        fg = scheme.onSurface;
-        border = BorderSide(color: scheme.secondary.withOpacity(0.3));
+        fg = scheme.primary;
+        bg = scheme.primary.withValues(alpha: _hover ? 0.18 : 0.11);
+        border = Border.all(color: scheme.primary.withValues(alpha: 0.35));
         break;
       case FluentButtonType.ghost:
-        bg = Colors.transparent;
-        fg = scheme.onSurface;
-        border = BorderSide(color: scheme.outline.withOpacity(0.4));
+        fg = scheme.onSurface.withValues(alpha: 0.9);
+        bg = _hover
+            ? scheme.onSurface.withValues(alpha: 0.06)
+            : Colors.transparent;
+        border = Border.all(color: scheme.outline.withValues(alpha: 0.7));
         break;
     }
 
-    final horizontalPadding = compact ? 12.0 : 16.0;
-    final verticalPadding = compact ? 10.0 : 12.0;
+    final hPad = widget.compact ? 12.0 : 18.0;
+    final vPad = widget.compact ? 10.0 : 13.0;
 
-    final isEnabled = onPressed != null && !isLoading;
+    final content = Row(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        if (widget.isLoading) ...[
+          SizedBox(
+            height: 15,
+            width: 15,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              valueColor: AlwaysStoppedAnimation<Color>(fg),
+            ),
+          ),
+          if (widget.showLabel) const SizedBox(width: 9),
+        ] else if (widget.icon != null) ...[
+          Icon(widget.icon, color: fg, size: 18),
+          if (widget.showLabel) const SizedBox(width: 9),
+        ],
+        if (widget.showLabel)
+          // Flexible + ellipsis : le libellé cède plutôt que de déborder.
+          Flexible(
+            child: Text(
+              widget.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: fg,
+                fontWeight: FontWeight.w700,
+                fontSize: widget.compact ? 13 : 14,
+                letterSpacing: 0.1,
+              ),
+            ),
+          ),
+      ],
+    );
 
-    return AnimatedOpacity(
-      duration: FluentTheme.fastAnim,
-      opacity: isEnabled ? 1 : 0.6,
-      child: AnimatedContainer(
-        duration: FluentTheme.fastAnim,
-        decoration: BoxDecoration(
-          color: gradient == null ? bg : null,
-          gradient: gradient,
-          borderRadius: BorderRadius.circular(FluentTheme.buttonRadius),
-          border: border != null ? Border.all(color: border.color, width: border.width) : null,
-          boxShadow: type == FluentButtonType.primary
-              ? [FluentTheme.softShadow(context)]
-              : const [],
-        ),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            borderRadius: BorderRadius.circular(FluentTheme.buttonRadius),
-            onTap: isEnabled ? onPressed : null,
-            child: Padding(
-              padding: EdgeInsets.symmetric(
-                horizontal: horizontalPadding,
-                vertical: verticalPadding,
+    return MouseRegion(
+      cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        onTapDown: enabled ? (_) => setState(() => _pressed = true) : null,
+        onTapUp: enabled ? (_) => setState(() => _pressed = false) : null,
+        onTapCancel: enabled ? () => setState(() => _pressed = false) : null,
+        onTap: enabled ? widget.onPressed : null,
+        child: AnimatedOpacity(
+          duration: AppTheme.fast,
+          opacity: enabled ? 1 : 0.45,
+          child: AnimatedScale(
+            duration: AppTheme.fast,
+            curve: AppTheme.ease,
+            scale: _pressed ? 0.96 : 1,
+            child: AnimatedContainer(
+              duration: AppTheme.fast,
+              curve: AppTheme.ease,
+              padding: EdgeInsets.symmetric(horizontal: hPad, vertical: vPad),
+              decoration: BoxDecoration(
+                color: gradient == null ? bg : null,
+                gradient: gradient,
+                borderRadius: BorderRadius.circular(AppTheme.rButton),
+                border: border,
+                boxShadow: enabled && !_pressed ? shadows : const [],
               ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  if (isLoading) ...[
-                    SizedBox(
-                      height: 16,
-                      width: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(fg),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                  ] else if (icon != null) ...[
-                    Icon(icon, color: fg, size: 18),
-                    if (showLabel) const SizedBox(width: 8),
-                  ],
-                  if (showLabel)
-                    Text(
-                      label,
-                      style: TextStyle(
-                        color: fg,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                ],
-              ),
+              child: content,
             ),
           ),
         ),

@@ -1,3 +1,4 @@
+import '../ui/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'add_profile_page.dart';
@@ -1258,7 +1259,7 @@ class _PurchasesCardPrincipal extends StatelessWidget {
       builder: (_) => AlertDialog(
         title: const Text('Historique des achats du cabinet'),
         content: SizedBox(
-          width: 520,
+          width: AppTheme.dialogWidth(context, 520),
           height: 440,
           child: _PurchasesHistoryPrincipal(parentUid: parentUid, dayKey: _todayKey()),
         ),

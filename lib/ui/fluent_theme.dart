@@ -1,40 +1,26 @@
 import 'package:flutter/material.dart';
+import 'app_theme.dart';
 
+/// Ancien point d'entrée du style, conservé comme façade.
+///
+/// Le style vit désormais dans [AppTheme]. Cette classe redirige pour que le
+/// code existant continue de fonctionner tout en adoptant le nouveau rendu.
+/// À terme, remplacer les appels `FluentTheme.x` par `AppTheme.x`.
 class FluentTheme {
-  static const double cardRadius = 16;
-  static const double buttonRadius = 14;
-  static const double appBarRadius = 18;
-  static const Duration fastAnim = Duration(milliseconds: 180);
-  static const Duration midAnim = Duration(milliseconds: 240);
+  static const double cardRadius = AppTheme.rCard;
+  static const double buttonRadius = AppTheme.rButton;
+  static const double appBarRadius = AppTheme.rCard;
+  static const Duration fastAnim = AppTheme.fast;
+  static const Duration midAnim = AppTheme.mid;
 
-  static BoxShadow softShadow(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return BoxShadow(
-      color: isDark ? Colors.black.withOpacity(0.35) : Colors.black.withOpacity(0.12),
-      blurRadius: 18,
-      offset: const Offset(0, 8),
-    );
-  }
+  /// Conserve l'ancienne signature (une seule ombre) en piochant la couche
+  /// principale de la nouvelle ombre à deux niveaux.
+  static BoxShadow softShadow(BuildContext context) =>
+      AppTheme.shadow(context).first;
 
-  static LinearGradient appBarGradient(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return LinearGradient(
-      colors: [scheme.primary, scheme.secondary],
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-    );
-  }
+  static LinearGradient appBarGradient(BuildContext context) =>
+      AppTheme.brandGradient(context);
 
-  static LinearGradient micaBackground(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return LinearGradient(
-      colors: [
-        scheme.primary.withOpacity(0.05),
-        scheme.secondary.withOpacity(0.05),
-        scheme.background,
-      ],
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-    );
-  }
+  static LinearGradient micaBackground(BuildContext context) =>
+      AppTheme.pageGradient(context);
 }

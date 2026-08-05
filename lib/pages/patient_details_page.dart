@@ -1,3 +1,4 @@
+import '../ui/app_theme.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
@@ -10,6 +11,19 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/firestore_service.dart';
+
+/// Rend le contenu d'un dialogue defilable et borne sa hauteur.
+///
+/// Un `content: Column(...)` deborde des que la fenetre est courte ou que
+/// l'utilisateur agrandit la taille du texte. Cette enveloppe supprime la
+/// classe entiere de ces debordements verticaux.
+Widget _scrollableDialogContent(BuildContext context, Widget child) {
+  return ConstrainedBox(
+    constraints: BoxConstraints(maxHeight: AppTheme.dialogMaxHeight(context)),
+    child: SingleChildScrollView(child: child),
+  );
+}
+
 
 class PatientDetailsPage extends StatelessWidget {
   final String patientId;
@@ -956,7 +970,7 @@ class PatientDetailsPage extends StatelessWidget {
             return AlertDialog(
               title: const Text('Ordonnance medecin'),
               content: SizedBox(
-                width: 700,
+                width: AppTheme.dialogWidth(context, 700),
                 child: SingleChildScrollView(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1470,7 +1484,7 @@ class PatientDetailsPage extends StatelessWidget {
             return AlertDialog(
               title: const Text('Demande de bilan'),
               content: SizedBox(
-                width: 700,
+                width: AppTheme.dialogWidth(context, 700),
                 child: SingleChildScrollView(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1849,7 +1863,7 @@ class PatientDetailsPage extends StatelessWidget {
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Reglement'),
-        content: Column(
+        content: _scrollableDialogContent(context, Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1872,7 +1886,7 @@ class PatientDetailsPage extends StatelessWidget {
               ),
             ),
           ],
-        ),
+        )),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -1932,7 +1946,7 @@ class PatientDetailsPage extends StatelessWidget {
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Seances'),
-        content: Column(
+        content: _scrollableDialogContent(context, Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1950,7 +1964,7 @@ class PatientDetailsPage extends StatelessWidget {
               decoration: const InputDecoration(labelText: 'Nombre de seances'),
             ),
           ],
-        ),
+        )),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -2724,7 +2738,7 @@ class PatientDetailsPage extends StatelessWidget {
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Nouveau formulaire'),
-        content: Column(
+        content: _scrollableDialogContent(context, Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
@@ -2740,7 +2754,7 @@ class PatientDetailsPage extends StatelessWidget {
               ),
             ),
           ],
-        ),
+        )),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -2904,7 +2918,7 @@ class PatientDetailsPage extends StatelessWidget {
       builder: (_) => AlertDialog(
         title: const Text('Formulaire medecin'),
         content: SizedBox(
-          width: 520,
+          width: AppTheme.dialogWidth(context, 520),
           child: SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -3222,7 +3236,7 @@ class PatientDetailsPage extends StatelessWidget {
       builder: (_) => AlertDialog(
         title: const Text('Modifier formulaire'),
         content: SizedBox(
-          width: 520,
+          width: AppTheme.dialogWidth(context, 520),
           child: SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -3507,7 +3521,7 @@ class PatientDetailsPage extends StatelessWidget {
       builder: (_) => AlertDialog(
         title: const Text('Formulaire medecin'),
         content: SizedBox(
-          width: 520,
+          width: AppTheme.dialogWidth(context, 520),
           child: SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

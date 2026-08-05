@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'app_theme.dart';
 import 'fluent_theme.dart';
 import 'fluent_button.dart';
 import '../widgets/theme_toggle.dart';
@@ -32,28 +33,31 @@ class AppShell extends StatelessWidget {
       backgroundColor: scheme.surface,
       body: Stack(
         children: [
-          // fond medical dégradé + formes
+          // Fond : dégradé de marque, profond et saturé.
           Container(
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  Color(0xFF0F766E),
-                  Color(0xFF0B1324),
+                  Color.lerp(scheme.primary, Colors.black, 0.34)!,
+                  Color.lerp(scheme.primary, Colors.black, 0.62)!,
+                  const Color(0xFF04141A),
                 ],
+                stops: const [0, 0.45, 1],
               ),
             ),
           ),
+          // Halo chaud en haut à droite : donne une source de lumière.
           Positioned.fill(
             child: IgnorePointer(
               child: DecoratedBox(
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   gradient: RadialGradient(
-                    center: Alignment(0.75, -0.8),
-                    radius: 1.1,
+                    center: const Alignment(0.85, -0.9),
+                    radius: 1.15,
                     colors: [
-                      Color(0x44F59E0B),
+                      scheme.secondary.withValues(alpha: 0.34),
                       Colors.transparent,
                     ],
                   ),
@@ -62,21 +66,23 @@ class AppShell extends StatelessWidget {
             ),
           ),
           Positioned(
-            top: -60,
-            right: -40,
-            child: _blurCircle(const Color(0x5538BDF8), 240),
+            top: -70,
+            right: -50,
+            child: IgnorePointer(
+              child: _blurCircle(
+                scheme.primary.withValues(alpha: 0.42),
+                260,
+              ),
+            ),
           ),
           Positioned(
-            bottom: -40,
-            left: -60,
-            child: _blurCircle(const Color(0x3343F0E7), 200),
-          ),
-          Positioned(
-            top: 140,
-            right: 60,
-            child: Opacity(
-              opacity: 0.12,
-              child: Icon(Icons.health_and_safety, size: 120, color: Colors.white),
+            bottom: -60,
+            left: -70,
+            child: IgnorePointer(
+              child: _blurCircle(
+                scheme.tertiary.withValues(alpha: 0.26),
+                220,
+              ),
             ),
           ),
           Column(
@@ -374,71 +380,117 @@ class _TabBarModern extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final isLight = Theme.of(context).brightness == Brightness.light;
+
+    final row = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: List.generate(items.length, (i) {
+        final selected = i == currentIndex;
+        return Padding(
+          padding: EdgeInsets.only(right: i == items.length - 1 ? 0 : 6),
+          child: _Tab(
+            label: items[i],
+            selected: selected,
+            scheme: scheme,
+            onTap: () => onTap(i),
+          ),
+        );
+      }),
+    );
+
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
       decoration: BoxDecoration(
-        color: isLight ? const Color(0xFFF9F6F0) : Colors.white.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withOpacity(isLight ? 0.6 : 0.08)),
-        boxShadow: [FluentTheme.softShadow(context)],
+        color: Colors.white.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(AppTheme.rPill),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
       ),
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: List.generate(items.length, (i) {
-          final selected = i == currentIndex;
-          return InkWell(
-            borderRadius: BorderRadius.circular(10),
-            onTap: () => onTap(i),
-            child: AnimatedContainer(
-              duration: FluentTheme.fastAnim,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                gradient: selected
-                    ? LinearGradient(
-                        colors: [
-                          scheme.primary.withOpacity(0.22),
-                          scheme.secondary.withOpacity(0.22),
-                        ],
-                      )
-                    : null,
-                color: selected ? null : Colors.transparent,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: selected ? scheme.secondary.withOpacity(0.8) : scheme.outline.withOpacity(0.2),
-                ),
-                boxShadow: selected
-                    ? [
-                        BoxShadow(
-                          color: scheme.secondary.withOpacity(0.25),
-                          blurRadius: 16,
-                          offset: const Offset(0, 8),
-                        ),
-                      ]
-                    : [],
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (selected) ...[
-                    Icon(Icons.check_circle, color: scheme.secondary, size: 18),
-                    const SizedBox(width: 6),
-                  ],
-                  Text(
-                    items[i],
-                    style: TextStyle(
-                      color: selected ? scheme.onSurface : Theme.of(context).textTheme.bodyMedium?.color,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 15,
+      // Défilement horizontal : avec beaucoup d'onglets ou une fenêtre
+      // étroite, la barre glisse au lieu de déborder.
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        physics: const ClampingScrollPhysics(),
+        child: row,
+      ),
+    );
+  }
+}
+
+class _Tab extends StatefulWidget {
+  final String label;
+  final bool selected;
+  final ColorScheme scheme;
+  final VoidCallback onTap;
+
+  const _Tab({
+    required this.label,
+    required this.selected,
+    required this.scheme,
+    required this.onTap,
+  });
+
+  @override
+  State<_Tab> createState() => _TabState();
+}
+
+class _TabState extends State<_Tab> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = widget.scheme;
+    final sel = widget.selected;
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: AppTheme.mid,
+          curve: AppTheme.ease,
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+          decoration: BoxDecoration(
+            gradient: sel
+                ? LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [s.primary, Color.lerp(s.primary, s.secondary, 0.6)!],
+                  )
+                : null,
+            color: sel
+                ? null
+                : Colors.white.withValues(alpha: _hover ? 0.12 : 0.0),
+            borderRadius: BorderRadius.circular(AppTheme.rPill),
+            boxShadow: sel
+                ? [
+                    BoxShadow(
+                      color: s.primary.withValues(alpha: 0.45),
+                      blurRadius: 18,
+                      offset: const Offset(0, 6),
                     ),
-                  ),
-                ],
-              ),
+                  ]
+                : const [],
+          ),
+          child: AnimatedDefaultTextStyle(
+            duration: AppTheme.mid,
+            curve: AppTheme.ease,
+            style: TextStyle(
+              color: sel
+                  ? Colors.white
+                  : Colors.white.withValues(alpha: _hover ? 0.95 : 0.72),
+              fontWeight: sel ? FontWeight.w800 : FontWeight.w600,
+              fontSize: 14.5,
+              letterSpacing: sel ? 0.1 : 0,
             ),
-          );
-        }),
+            child: Text(
+              widget.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ),
       ),
     );
   }
