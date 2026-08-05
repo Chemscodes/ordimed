@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -12,9 +13,14 @@ import 'pages/login_page.dart';
 import 'pages/profile_selector_page.dart';
 import 'theme_controller.dart';
 import 'services/auth_service.dart';
+import 'services/error_reporter.dart';
 import 'services/firestore_service.dart';
 
 const bool kUltraLite = bool.fromEnvironment('ULTRA_LITE', defaultValue: false);
+
+/// Reportee dans chaque rapport d'erreur : permet de savoir quelle version
+/// tourne chez un cabinet donne. A incrementer a chaque livraison.
+const String kAppVersion = '1.0.0+1';
 
 void main(List<String> args) async {
   final bool ultraLite = kUltraLite || args.contains('--lite');
@@ -22,22 +28,36 @@ void main(List<String> args) async {
   FlutterError.onError = (details) {
     FlutterError.dumpErrorToConsole(details);
   };
-  WidgetsBinding.instance.platformDispatcher.onError = (error, stack) {
-    debugPrint('Uncaught platform error: $error');
-    debugPrintStack(stackTrace: stack);
-    return true;
-  };
 
   await runZonedGuarded(
     () async {
       await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform,
       );
+
+      // Cache local : le cabinet continue de travailler pendant une coupure
+      // internet, et les ecritures sont rejouees au retour du reseau.
+      FirebaseFirestore.instance.settings = const Settings(
+        persistenceEnabled: true,
+        cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+      );
+
+      // Installe apres Firebase : le rapporteur ecrit dans Firestore.
+      ErrorReporter().install(appVersion: kAppVersion);
+
       runApp(MyApp(ultraLite: ultraLite));
     },
     (error, stack) {
       debugPrint('Uncaught zone error: $error');
       debugPrintStack(stackTrace: stack);
+      unawaited(
+        ErrorReporter().report(
+          error,
+          stack,
+          origin: 'zone',
+          appVersion: kAppVersion,
+        ),
+      );
     },
   );
 }

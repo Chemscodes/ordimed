@@ -8,6 +8,7 @@ import '../ui/app_shell.dart';
 import '../ui/fluent_card.dart';
 import '../ui/fluent_button.dart';
 import '../services/firestore_service.dart';
+import '../services/soft_delete.dart';
 import '../services/waiting_service.dart';
 import '../widgets/daily_versements_card.dart';
 
@@ -554,6 +555,7 @@ class _PatientsTabState extends State<_PatientsTab> {
 
         final filtered = patients.where((p) {
           final data = p.data() as Map<String, dynamic>;
+          if (isDeleted(data)) return false;
           final nom = (data['nom'] ?? '').toString();
           final prenom = (data['prenom'] ?? '').toString();
           final full = '$nom $prenom'.toLowerCase();

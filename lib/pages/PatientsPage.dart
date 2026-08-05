@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'patient_details_page.dart';
+import '../services/soft_delete.dart';
 
 class PatientsPage extends StatefulWidget {
   final String parentUid;
@@ -131,6 +132,7 @@ class _PatientsPageState extends State<PatientsPage> {
 
                 final filtered = docs.where((d) {
                   final data = d.data() as Map<String, dynamic>;
+                  if (isDeleted(data)) return false;
                   final nom = (data['nom'] ?? '').toString();
                   final prenom = (data['prenom'] ?? '').toString();
                   final full = '$nom $prenom'.toLowerCase();

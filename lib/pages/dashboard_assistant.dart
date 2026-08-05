@@ -11,6 +11,7 @@ import 'profile_selector_page.dart';
 import 'stats_page.dart';
 import '../services/firestore_service.dart';
 import '../services/rendezvous_repository.dart';
+import '../services/soft_delete.dart';
 import '../services/stats_service.dart';
 import '../services/waiting_service.dart';
 import '../ui/app_shell.dart';
@@ -1291,9 +1292,11 @@ class _PatientsTabState extends State<_PatientsTab> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Supprimer patient'),
+        title: const Text('Retirer le patient'),
         content: const Text(
-          'Voulez-vous supprimer ce patient et ses donnees associees ?',
+          'Le patient disparaitra des listes et de la salle d\'attente.\n\n'
+          'Son dossier medical, ses versements et son historique sont '
+          'conserves : la suppression peut etre annulee.',
         ),
         actions: [
           TextButton(
@@ -1302,7 +1305,7 @@ class _PatientsTabState extends State<_PatientsTab> {
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Supprimer'),
+            child: const Text('Retirer'),
           ),
         ],
       ),
@@ -1326,25 +1329,40 @@ class _PatientsTabState extends State<_PatientsTab> {
           .doc(widget.parentUid)
           .collection('comptes');
 
-      // Suppression immediate des docs patient pour que la liste se mette a jour vite.
+      // Suppression douce : on marque le patient sur chaque copie de profil.
+      // Le dossier, les formulaires et les versements restent intacts.
+      final mark = deletionMark(
+        byProfileId: widget.profileId,
+        byName: widget.assistantName,
+      );
       final batch = FirebaseFirestore.instance.batch();
       for (final profileId in profileIds) {
-        batch.delete(base.doc(profileId).collection('patients').doc(patientId));
+        batch.set(
+          base.doc(profileId).collection('patients').doc(patientId),
+          mark,
+          SetOptions(merge: true),
+        );
       }
       await batch.commit().timeout(const Duration(seconds: 15));
 
-      // Nettoyage secondaire en arriere-plan.
+      // Retrait des elements operationnels en arriere-plan.
       unawaited(
         _cleanupPatientRelatedDocs(
           patientId: patientId,
           profileIds: profileIds,
+          mark: mark,
         ),
       );
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Patient supprime (nettoyage en cours)'),
+          SnackBar(
+            content: const Text('Patient retire — dossier conserve'),
+            action: SnackBarAction(
+              label: 'Annuler',
+              onPressed: () => _restorePatient(patientId, profileIds),
+            ),
+            duration: const Duration(seconds: 8),
           ),
         );
       }
@@ -1363,9 +1381,17 @@ class _PatientsTabState extends State<_PatientsTab> {
     }
   }
 
+  /// Retire le patient de la vie courante du cabinet.
+  ///
+  /// Les formulaires ne sont plus touches : ils *sont* le dossier medical,
+  /// et c'est precisement ce que la suppression douce protege.
+  /// Les rendez-vous sont marques comme supprimes. Les lignes de salle
+  /// d'attente sont cloturees, parce qu'un patient retire ne doit pas
+  /// rester dans la file d'aujourd'hui.
   Future<void> _cleanupPatientRelatedDocs({
     required String patientId,
     required Set<String> profileIds,
+    required Map<String, dynamic> mark,
   }) async {
     final base = FirebaseFirestore.instance
         .collection('users')
@@ -1374,16 +1400,6 @@ class _PatientsTabState extends State<_PatientsTab> {
 
     for (final profileId in profileIds) {
       final profileRef = base.doc(profileId);
-      final patientRef = profileRef.collection('patients').doc(patientId);
-
-      try {
-        final formsSnap = await patientRef.collection('forms').get();
-        if (formsSnap.docs.isNotEmpty) {
-          await Future.wait(
-            formsSnap.docs.map((d) => d.reference.delete().catchError((_) {})),
-          );
-        }
-      } catch (_) {}
 
       try {
         final rdvSnap = await profileRef
@@ -1392,7 +1408,11 @@ class _PatientsTabState extends State<_PatientsTab> {
             .get();
         if (rdvSnap.docs.isNotEmpty) {
           await Future.wait(
-            rdvSnap.docs.map((d) => d.reference.delete().catchError((_) {})),
+            rdvSnap.docs.map(
+              (d) => d.reference
+                  .set(mark, SetOptions(merge: true))
+                  .catchError((_) {}),
+            ),
           );
         }
       } catch (_) {}
@@ -1403,13 +1423,75 @@ class _PatientsTabState extends State<_PatientsTab> {
             .where('patientId', isEqualTo: patientId)
             .get();
         if (waitingSnap.docs.isNotEmpty) {
+          final closing = {
+            ...mark,
+            'status': 'done',
+            'closedAt': FieldValue.serverTimestamp(),
+          };
           await Future.wait(
             waitingSnap.docs.map(
-              (d) => d.reference.delete().catchError((_) {}),
+              (d) => d.reference
+                  .set(closing, SetOptions(merge: true))
+                  .catchError((_) {}),
             ),
           );
         }
       } catch (_) {}
+    }
+  }
+
+  /// Annule une suppression : le patient et ses rendez-vous reviennent.
+  /// Les lignes de salle d'attente restent cloturees — un patient restaure
+  /// n'a pas a reapparaitre dans la file d'une journee deja passee.
+  Future<void> _restorePatient(
+    String patientId,
+    Set<String> profileIds,
+  ) async {
+    final base = FirebaseFirestore.instance
+        .collection('users')
+        .doc(widget.parentUid)
+        .collection('comptes');
+    final undo = restorationMark();
+
+    try {
+      final batch = FirebaseFirestore.instance.batch();
+      for (final profileId in profileIds) {
+        batch.set(
+          base.doc(profileId).collection('patients').doc(patientId),
+          undo,
+          SetOptions(merge: true),
+        );
+      }
+      await batch.commit();
+
+      for (final profileId in profileIds) {
+        try {
+          final rdvSnap = await base
+              .doc(profileId)
+              .collection('rendezvous')
+              .where('patientId', isEqualTo: patientId)
+              .get();
+          await Future.wait(
+            rdvSnap.docs.map(
+              (d) => d.reference
+                  .set(undo, SetOptions(merge: true))
+                  .catchError((_) {}),
+            ),
+          );
+        } catch (_) {}
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Patient restaure')),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Echec de la restauration')),
+        );
+      }
     }
   }
 
@@ -1567,6 +1649,7 @@ class _PatientsTabState extends State<_PatientsTab> {
 
               final filtered = patients.where((p) {
                 final data = p.data() as Map<String, dynamic>;
+                if (isDeleted(data)) return false;
                 final nom = (data['nom'] ?? '').toString();
                 final prenom = (data['prenom'] ?? '').toString();
                 final full = '$nom $prenom'.toLowerCase();
@@ -2422,11 +2505,15 @@ class _AssistantRdvTabState extends State<_AssistantRdvTab> {
               if (!snap.hasData) {
                 return const Center(child: CircularProgressIndicator());
               }
-              final docs = snap.data!.docs;
+              final allDocs = snap.data!.docs;
+              final canLoadMore = allDocs.length >= _limit;
+              // Masque les rendez-vous des patients retires.
+              final docs = allDocs
+                  .where((d) => !isDeleted(d.data() as Map<String, dynamic>))
+                  .toList();
               if (docs.isEmpty) {
                 return const Center(child: Text('Aucun Rendez-vous planifie'));
               }
-              final canLoadMore = docs.length >= _limit;
               return ListView.builder(
                 padding: const EdgeInsets.all(12),
                 itemCount: docs.length + (canLoadMore ? 1 : 0),
