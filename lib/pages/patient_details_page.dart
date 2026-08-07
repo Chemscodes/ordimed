@@ -12,6 +12,7 @@ import 'package:printing/printing.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/firestore_service.dart';
 import '../core/coerce.dart';
+import '../ui/info_display.dart';
 import '../core/clinical.dart';
 import '../core/format.dart' as fmt;
 import '../core/validate.dart' as v;
@@ -3774,150 +3775,228 @@ class _PatientHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textPrimary = scheme.onSurface;
-    final textMuted = scheme.onSurface.withOpacity(0.7);
-    final cardGradient = LinearGradient(
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-      colors: [
-        scheme.surface,
-        scheme.surfaceVariant.withOpacity(isDark ? 0.65 : 0.5),
-      ],
-    );
-    final borderColor = isDark
-        ? Colors.white.withOpacity(0.08)
-        : Colors.black.withOpacity(0.08);
-    final shadowColor = Colors.black.withOpacity(isDark ? 0.35 : 0.1);
+    final nomComplet = '$name $prenom'.trim();
 
-    Widget infoItem(IconData icon, String text) {
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 16, color: textMuted),
-          const SizedBox(width: 6),
-          Text(text, style: TextStyle(fontSize: 14, color: textPrimary)),
-        ],
-      );
-    }
+    // Les montants et les seances ne figurent plus ici : ils ont leurs
+    // propres cartes calculees juste en dessous. Les repeter en pastilles
+    // dupliquait l'information et noyait l'identite du patient.
+    final identite = <InfoPair>[
+      if (age.isNotEmpty) InfoPair(label: 'Age', value: '$age ans'),
+      if (medecin.isNotEmpty)
+        InfoPair(
+          label: 'Medecin',
+          value: medecin,
+          icon: Icons.medical_services_outlined,
+        ),
+      if (assistant.isNotEmpty)
+        InfoPair(
+          label: 'Assistant',
+          value: assistant,
+          icon: Icons.support_agent_outlined,
+        ),
+      if (origine.isNotEmpty)
+        InfoPair(
+          label: 'Origine',
+          value: fmt.capitalize(fmt.humanize(origine)),
+          icon: Icons.travel_explore_outlined,
+        ),
+      if (createdAt != null)
+        InfoPair(
+          label: 'Dossier cree',
+          value: fmt.date(createdAt),
+          icon: Icons.event_outlined,
+        ),
+    ];
 
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: cardGradient,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: borderColor),
-        boxShadow: [
-          BoxShadow(
-            color: shadowColor,
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          ),
-        ],
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(AppTheme.rCard),
+        border: Border.all(color: scheme.outline.withValues(alpha: 0.7)),
+        boxShadow: AppTheme.shadow(context, strength: 0.8),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Identite : pastille d'initiales, nom, motifs. Le motif qualifie
+          // la venue, il monte au niveau du nom au lieu de flotter dans un
+          // coin de la carte.
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              InitialsAvatar(nom: name, prenom: prenom, size: 56),
+              const SizedBox(width: 16),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '$name ${prenom.isNotEmpty ? prenom : ''}'.trim(),
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w700,
-                        color: textPrimary,
+                      nomComplet.isEmpty ? 'Patient' : nomComplet,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.7,
+                        height: 1.15,
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Wrap(
-                      spacing: 14,
-                      runSpacing: 6,
-                      children: [
-                        infoItem(
-                          Icons.call,
-                          tel.isEmpty ? 'Tel non renseigné' : tel,
-                        ),
-                        infoItem(
-                          Icons.mail_outline,
-                          email.isEmpty ? 'Email non renseigné' : email,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    infoItem(
-                      Icons.location_on_outlined,
-                      origine.isEmpty ? 'Origine : N/A' : 'Origine : $origine',
-                    ),
-                    const SizedBox(height: 6),
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 6,
-                      children: [
-                        if (age.isNotEmpty) _ChipInfo(label: 'Âge', value: age),
-                        if (medecin.isNotEmpty)
-                          _ChipInfo(label: 'Médecin', value: medecin),
-                        if (assistant.isNotEmpty)
-                          _ChipInfo(label: 'Assistant', value: assistant),
-                        if (seancesTotal != null || seancesDone != null)
-                          _ChipInfo(
-                            label: 'Seances',
-                            value: '${seancesDone ?? 0}/${seancesTotal ?? '-'}',
-                          ),
-                        if (prix != null)
-                          _ChipInfo(
-                            label: 'Total',
-                            value: 'DA ${_formatMoney(prix!)}',
-                          ),
-                        if (versementsTotal != null)
-                          _ChipInfo(
-                            label: 'Versements',
-                            value: 'DA ${_formatMoney(versementsTotal!)}',
-                          ),
-                        if (createdAt != null)
-                          _ChipInfo(
-                            label: 'Créé',
-                            value: _formatDateHeader(createdAt),
-                          ),
-                      ],
-                    ),
+                    if (motif.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: motif
+                            .split(',')
+                            .map((m) => m.trim())
+                            .where((m) => m.isNotEmpty)
+                            .map((m) => _MotifPill(motif: m))
+                            .toList(),
+                      ),
+                    ],
                   ],
-                ),
-              ),
-              Chip(
-                label: Text(
-                  motif.isEmpty ? 'Motif : N/A' : 'Motif : $motif',
-                  style: TextStyle(
-                    color: textPrimary,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                backgroundColor: scheme.secondary.withOpacity(
-                  isDark ? 0.24 : 0.18,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  side: BorderSide(
-                    color: scheme.secondary.withOpacity(isDark ? 0.5 : 0.35),
-                  ),
                 ),
               ),
             ],
           ),
+          const SizedBox(height: 18),
+          // Contacts cliquables plutot que decoratifs : un numero affiche
+          // dans un cabinet sert a etre appele.
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              _ContactPill(
+                icon: Icons.call_outlined,
+                label: tel.isEmpty ? 'Aucun telephone' : fmt.phone(tel),
+                actif: tel.isNotEmpty,
+                uri: tel.isEmpty ? null : Uri.parse('tel:$tel'),
+              ),
+              _ContactPill(
+                icon: Icons.mail_outline,
+                label: email.isEmpty ? 'Aucun e-mail' : email,
+                actif: email.isNotEmpty,
+                uri: email.isEmpty ? null : Uri.parse('mailto:$email'),
+              ),
+            ],
+          ),
+          if (identite.isNotEmpty) ...[
+            const SizedBox(height: 18),
+            Divider(color: scheme.outline.withValues(alpha: 0.6), height: 1),
+            const SizedBox(height: 16),
+            InfoGrid(items: identite, minColumnWidth: 140),
+          ],
         ],
       ),
     );
   }
+}
 
-  String _formatMoney(double value) {
-    final isInt = value.truncateToDouble() == value;
-    return value.toStringAsFixed(isInt ? 0 : 2);
+/// Pastille de motif de consultation.
+class _MotifPill extends StatelessWidget {
+  final String motif;
+
+  const _MotifPill({required this.motif});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final libelle = fmt.capitalize(
+      fmt.humanize(motif.startsWith('autre:') ? motif.substring(6) : motif),
+    );
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: Color.alphaBlend(
+          scheme.secondary.withValues(alpha: 0.16),
+          scheme.surface,
+        ),
+        borderRadius: BorderRadius.circular(AppTheme.rPill),
+        border: Border.all(color: scheme.secondary.withValues(alpha: 0.4)),
+      ),
+      child: Text(
+        libelle,
+        style: TextStyle(
+          fontSize: 11.5,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.2,
+          color: Color.lerp(scheme.secondary, scheme.onSurface, 0.3),
+        ),
+      ),
+    );
+  }
+}
+
+/// Pastille de contact : affiche l'information et declenche l'action.
+class _ContactPill extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool actif;
+  final Uri? uri;
+
+  const _ContactPill({
+    required this.icon,
+    required this.label,
+    required this.actif,
+    this.uri,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final couleur = actif
+        ? scheme.primary
+        : scheme.onSurface.withValues(alpha: 0.4);
+
+    final contenu = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: actif
+            ? Color.alphaBlend(
+                scheme.primary.withValues(alpha: 0.08),
+                scheme.surface,
+              )
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(AppTheme.rPill),
+        border: Border.all(
+          color: actif
+              ? scheme.primary.withValues(alpha: 0.3)
+              : scheme.outline.withValues(alpha: 0.6),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: couleur),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 13.5,
+              fontWeight: actif ? FontWeight.w600 : FontWeight.w400,
+              fontStyle: actif ? FontStyle.normal : FontStyle.italic,
+              color: actif
+                  ? scheme.onSurface
+                  : scheme.onSurface.withValues(alpha: 0.45),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    final cible = uri;
+    if (!actif || cible == null) return contenu;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () => launchUrl(cible, mode: LaunchMode.externalApplication),
+        child: contenu,
+      ),
+    );
   }
 }
 
@@ -3993,35 +4072,6 @@ class _MetricCard extends StatelessWidget {
   }
 }
 
-class _ChipInfo extends StatelessWidget {
-  final String label;
-  final String value;
-  const _ChipInfo({required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = scheme.primary.withOpacity(isDark ? 0.18 : 0.1);
-    final border = scheme.primary.withOpacity(isDark ? 0.4 : 0.25);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: border),
-      ),
-      child: Text(
-        '$label : $value',
-        style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          color: scheme.onSurface,
-        ),
-      ),
-    );
-  }
-}
 
 String _formatDateHeader(dynamic ts) {
   if (ts is Timestamp) {

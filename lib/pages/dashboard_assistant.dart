@@ -20,6 +20,7 @@ import '../ui/fluent_button.dart';
 import '../ui/fluent_card.dart';
 import '../widgets/daily_versements_card.dart';
 import '../core/coerce.dart';
+import '../ui/info_display.dart';
 import '../core/clinical.dart';
 import '../ui/app_field.dart';
 import '../widgets/computed_fields.dart';
@@ -2892,15 +2893,13 @@ class _RendezVousTabState extends State<_RendezVousTab> {
                             color: _DashboardAssistantState.primary,
                           ),
                           title: Text(patient),
-                          subtitle: Text(
-                            [
-                              if (doctor.isNotEmpty) 'Medecin: $doctor',
-                              if (assistant.isNotEmpty) 'Assistant: $assistant',
+                          subtitle: MetaLine(items: [
+if (doctor.isNotEmpty) 'Dr $doctor',
+                              if (assistant.isNotEmpty) assistant,
                               if (seancesDone != null || seancesTotal != null)
-                                'Seances: ${seancesDone ?? 0}/${seancesTotal ?? '-'}',
+                                'Séance ${seancesDone ?? 0}/${seancesTotal ?? '-'}',
                               'En consultation depuis $startStr',
-                            ].join('\n'),
-                          ),
+]),
                           trailing: Wrap(
                             spacing: 8,
                             children: [
@@ -2999,16 +2998,14 @@ class _RendezVousTabState extends State<_RendezVousTab> {
                               color: _DashboardAssistantState.primary,
                             ),
                             title: Text(patient),
-                            subtitle: Text(
-                              [
-                                if (doctor.isNotEmpty) 'Medecin: $doctor',
+                            subtitle: MetaLine(items: [
+if (doctor.isNotEmpty) 'Dr $doctor',
                                 if (assistant.isNotEmpty)
-                                  'Assistant: $assistant',
+                                  assistant,
                                 if (seancesDone != null || seancesTotal != null)
-                                  'Seances: ${seancesDone ?? 0}/${seancesTotal ?? '-'}',
-                                'Arrivee: $createdStr',
-                              ].join('\n'),
-                            ),
+                                  'Séance ${seancesDone ?? 0}/${seancesTotal ?? '-'}',
+                                'Arrivée createdStr',
+]),
                             trailing: Wrap(
                               spacing: 8,
                               children: [
@@ -3073,17 +3070,15 @@ class _RendezVousTabState extends State<_RendezVousTab> {
                               return ListTile(
                                 leading: Icon(Icons.history, color: mutedIcon),
                                 title: Text(patient),
-                                subtitle: Text(
-                                  [
-                                    if (doctor.isNotEmpty) 'Medecin: $doctor',
+                                subtitle: MetaLine(items: [
+if (doctor.isNotEmpty) 'Dr $doctor',
                                     if (assistant.isNotEmpty)
-                                      'Assistant: $assistant',
+                                      assistant,
                                     if (seancesDone != null ||
                                         seancesTotal != null)
-                                      'Seances: ${seancesDone ?? 0}/${seancesTotal ?? '-'}',
-                                    'Recu: $closedStr',
-                                  ].join('\n'),
-                                ),
+                                      'Séance ${seancesDone ?? 0}/${seancesTotal ?? '-'}',
+                                    'Reçu closedStr',
+]),
                               );
                             },
                           ),

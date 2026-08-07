@@ -13,6 +13,7 @@ import '../services/firestore_service.dart';
 import '../services/stats_service.dart';
 import '../widgets/daily_versements_card.dart';
 import '../core/coerce.dart';
+import '../ui/info_display.dart';
 
 int? _toInt(dynamic v) => asIntOrNull(v);
 
@@ -349,26 +350,35 @@ class _RendezVousTabState extends State<_RendezVousTab> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Les compteurs etaient en texte sombre sur le fond sombre de
+            // l'AppShell : quasi illisibles. Ils passent en pastilles.
             Padding(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
               child: Row(
                 children: [
-                  Text(
-                    'En consultation : ${inConsultation.length}',
-                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                  _Compteur(
+                    label: 'En consultation',
+                    valeur: inConsultation.length,
+                    statut: PatientStatut.consultation,
                   ),
-                  const SizedBox(width: 12),
-                  Text(
-                    'Salle d\'attente : ${waiting.length}',
-                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                  const SizedBox(width: 10),
+                  _Compteur(
+                    label: "Salle d'attente",
+                    valeur: waiting.length,
+                    statut: PatientStatut.attente,
                   ),
                   const Spacer(),
-                  TextButton(
+                  FluentButton(
+                    label: _showAll ? 'Recents' : 'Voir tout',
+                    icon: _showAll
+                        ? Icons.filter_alt_off_outlined
+                        : Icons.filter_alt_outlined,
+                    type: FluentButtonType.ghost,
+                    compact: true,
                     onPressed: () => setState(() {
                       _showAll = !_showAll;
                       _limit = _pageSize;
                     }),
-                    child: Text(_showAll ? 'Voir recents' : 'Voir tout'),
                   ),
                 ],
               ),
@@ -377,11 +387,12 @@ class _RendezVousTabState extends State<_RendezVousTab> {
               child: ListView(
                 padding: const EdgeInsets.only(bottom: 12),
                 children: [
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    child: Text(
-                      'En consultation',
-                      style: TextStyle(fontWeight: FontWeight.w700),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: SectionHeader(
+                      titre: 'En consultation',
+                      compteur: inConsultation.length,
+                      icone: Icons.medical_services_outlined,
                     ),
                   ),
                   if (inConsultation.isEmpty)
@@ -403,34 +414,40 @@ class _RendezVousTabState extends State<_RendezVousTab> {
                       final startStr = started != null
                           ? '${started.hour.toString().padLeft(2, '0')}:${started.minute.toString().padLeft(2, '0')}'
                           : '';
-                      return FluentCard(
-                        margin: const EdgeInsets.only(bottom: 12, left: 12, right: 12),
-                        padding: const EdgeInsets.all(14),
-                        child: ListTile(
-                          leading: const Icon(Icons.local_hospital, color: Color(0xFF2563EB)),
-                          title: Text(patient),
-                          subtitle: Text(
-                            [
-                              if (doctor.isNotEmpty) 'Medecin: $doctor',
-                              if (assistant.isNotEmpty) 'Assistant: $assistant',
-                              if (seancesDone != null || seancesTotal != null)
-                                'Seances: ${seancesDone ?? 0}/${seancesTotal ?? '-'}',
-                              'Depuis: $startStr',
-                            ].join('\n'),
-                          ),
-                          trailing: IconButton(
-                            tooltip: 'Ouvrir dossier',
-                            icon: const Icon(Icons.folder_open),
-                            onPressed: () => _openPatient(context, data),
-                          ),
+                      return Padding(
+                        padding: const EdgeInsets.only(
+                          bottom: 10,
+                          left: 12,
+                          right: 12,
+                        ),
+                        child: PersonRow(
+                          nom: patient.toString(),
+                          prenom: (data['patientPrenom'] ?? '').toString(),
+                          statut: PatientStatut.consultation,
+                          meta: [
+                            if (doctor.isNotEmpty) 'Dr $doctor',
+                            if (assistant.isNotEmpty) assistant,
+                            if (seancesDone != null || seancesTotal != null)
+                              'Séance ${seancesDone ?? 0}/${seancesTotal ?? '-'}',
+                          ],
+                          trailing: SinceBadge(label: 'Depuis', value: startStr),
+                          actions: [
+                            IconButton(
+                              tooltip: 'Ouvrir le dossier',
+                              icon: const Icon(Icons.folder_open_outlined),
+                              onPressed: () => _openPatient(context, data),
+                            ),
+                          ],
+                          onTap: () => _openPatient(context, data),
                         ),
                       );
                     }),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    child: Text(
-                      'Salle d\'attente',
-                      style: TextStyle(fontWeight: FontWeight.w700),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: SectionHeader(
+                      titre: "Salle d'attente",
+                      compteur: waiting.length,
+                      icone: Icons.hourglass_empty,
                     ),
                   ),
                   if (waiting.isEmpty)
@@ -456,26 +473,34 @@ class _RendezVousTabState extends State<_RendezVousTab> {
                         final createdStr = created != null
                             ? '${created.hour.toString().padLeft(2, '0')}:${created.minute.toString().padLeft(2, '0')}'
                             : '';
-                        return FluentCard(
-                          margin: const EdgeInsets.only(bottom: 12, left: 12, right: 12),
-                          padding: const EdgeInsets.all(14),
-                          child: ListTile(
-                            leading: const Icon(Icons.meeting_room_outlined, color: Color(0xFF2563EB)),
-                            title: Text(patient),
-                            subtitle: Text(
-                              [
-                                if (doctor.isNotEmpty) 'Medecin: $doctor',
-                                if (assistant.isNotEmpty) 'Assistant: $assistant',
-                                if (seancesDone != null || seancesTotal != null)
-                                  'Seances: ${seancesDone ?? 0}/${seancesTotal ?? '-'}',
-                                'Arrivee: $createdStr',
-                              ].join('\n'),
+                        return Padding(
+                          padding: const EdgeInsets.only(
+                            bottom: 10,
+                            left: 12,
+                            right: 12,
+                          ),
+                          child: PersonRow(
+                            nom: patient.toString(),
+                            prenom: (data['patientPrenom'] ?? '').toString(),
+                            statut: PatientStatut.attente,
+                            meta: [
+                              if (doctor.isNotEmpty) 'Dr $doctor',
+                              if (assistant.isNotEmpty) assistant,
+                              if (seancesDone != null || seancesTotal != null)
+                                'Séance ${seancesDone ?? 0}/${seancesTotal ?? '-'}',
+                            ],
+                            trailing: SinceBadge(
+                              label: 'Arrivée',
+                              value: createdStr,
                             ),
-                            trailing: IconButton(
-                              tooltip: 'Ouvrir dossier',
-                              icon: const Icon(Icons.folder_open),
-                              onPressed: () => _openPatient(context, data),
-                            ),
+                            actions: [
+                              IconButton(
+                                tooltip: 'Ouvrir le dossier',
+                                icon: const Icon(Icons.folder_open_outlined),
+                                onPressed: () => _openPatient(context, data),
+                              ),
+                            ],
+                            onTap: () => _openPatient(context, data),
                           ),
                         );
                       },
@@ -747,6 +772,66 @@ class _VersementCardsForDayState extends State<_VersementCardsForDay> {
   String _formatMoney(double value) {
     final isInt = value.truncateToDouble() == value;
     return value.toStringAsFixed(isInt ? 0 : 2);
+  }
+}
+
+/// Compteur d'etat en pastille, pour l'en-tete de la salle d'attente.
+///
+/// Les anciens compteurs etaient du texte sombre pose sur le fond sombre de
+/// l'AppShell : le contraste etait insuffisant pour les lire.
+class _Compteur extends StatelessWidget {
+  final String label;
+  final int valeur;
+  final PatientStatut statut;
+
+  const _Compteur({
+    required this.label,
+    required this.valeur,
+    required this.statut,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final couleur = statut == PatientStatut.consultation
+        ? scheme.secondary
+        : scheme.primary;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(AppTheme.rPill),
+        border: Border.all(color: couleur.withValues(alpha: 0.45)),
+        boxShadow: AppTheme.shadow(context, strength: 0.5),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(statut.icone, size: 15, color: couleur),
+          const SizedBox(width: 8),
+          Text(
+            '$valeur',
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.4,
+              fontFeatures: const [FontFeature.tabularFigures()],
+              color: couleur,
+            ),
+          ),
+          const SizedBox(width: 7),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+              color: scheme.onSurface.withValues(alpha: 0.7),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
