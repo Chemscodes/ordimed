@@ -1,17 +1,31 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'medecins_cards.dart';
-import '../ui/fluent_card.dart';
-import '../ui/fluent_button.dart';
-import '../services/waiting_service.dart';
 
+import 'medecins_cards.dart';
+import '../core/format.dart' as fmt;
+import '../core/validate.dart' as v;
+import '../services/waiting_service.dart';
+import '../ui/app_field.dart';
+import '../ui/app_theme.dart';
+import '../ui/fluent_button.dart';
+import '../ui/fluent_card.dart';
+
+/// Création d'un dossier patient, en trois étapes.
+///
+/// L'écran présentait auparavant huit champs, quatre boutons radio, une liste
+/// de motifs et une grille de médecins sur une seule page, sans validation :
+/// on découvrait une erreur après avoir tout saisi.
+///
+/// Chaque étape valide ce qu'elle contient avant de laisser avancer, et la
+/// dernière récapitule ce qui sera enregistré.
 class AddPatientForm extends StatefulWidget {
   final String parentUid;
   final String assistantProfileId;
   final String assistantName;
   final List<String> motifsPredefinis;
 
-  AddPatientForm({
+  const AddPatientForm({
+    super.key,
     required this.parentUid,
     required this.assistantProfileId,
     this.assistantName = '',
@@ -19,24 +33,49 @@ class AddPatientForm extends StatefulWidget {
   });
 
   @override
-  _AddPatientFormState createState() => _AddPatientFormState();
+  State<AddPatientForm> createState() => _AddPatientFormState();
 }
 
+/// Origines proposées. La clé part en base, le libellé s'affiche.
+const List<({String cle, String libelle, IconData icone})> _origines = [
+  (cle: 'reseaux', libelle: 'Réseaux sociaux', icone: Icons.share_outlined),
+  (
+    cle: 'famille_amis_bouche_a_oreille',
+    libelle: 'Famille ou amis',
+    icone: Icons.groups_outlined,
+  ),
+  (
+    cle: 'proximite_geographique_passage',
+    libelle: 'Passage devant le cabinet',
+    icone: Icons.place_outlined,
+  ),
+  (cle: 'internet', libelle: 'Site internet', icone: Icons.language),
+];
+
 class _AddPatientFormState extends State<AddPatientForm> {
+  // Une clé par étape : on ne valide que ce que l'utilisateur a sous les yeux.
+  final _identiteKey = GlobalKey<FormState>();
+  final _notesKey = GlobalKey<FormState>();
+
   final nom = TextEditingController();
   final prenom = TextEditingController();
   final age = TextEditingController();
   final tel = TextEditingController();
   final email = TextEditingController();
   final formulaireInitial = TextEditingController();
+  final motifAutre = TextEditingController();
+
   String origine = '';
   final Set<String> motifs = {};
-  final TextEditingController motifAutre = TextEditingController();
   late List<String> motifsOptions;
-  bool _isSaving = false;
 
   String? selectedDoctorId;
   Map<String, dynamic>? selectedDoctorData;
+
+  int _step = 0;
+  bool _isSaving = false;
+
+  static const int _dernierStep = 2;
 
   String generateId() => FirebaseFirestore.instance.collection('tmp').doc().id;
 
@@ -47,123 +86,6 @@ class _AddPatientFormState extends State<AddPatientForm> {
         ? [...widget.motifsPredefinis]
         : ['perte', 'prise'];
     _loadMotifsFromProfile();
-  }
-
-  Future<void> saveForm() async {
-    if (_isSaving) return;
-    if (selectedDoctorId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Choisis un medecin (touche une carte)')),
-      );
-      return;
-    }
-    if (motifs.isEmpty && motifAutre.text.trim().isNotEmpty) {
-      motifs.add('autre:${motifAutre.text.trim()}');
-    }
-    if (nom.text.trim().isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Nom requis')));
-      return;
-    }
-
-    setState(() => _isSaving = true);
-    try {
-      final patientId = generateId();
-      final data = {
-        'nom': nom.text.trim(),
-        'prenom': prenom.text.trim(),
-        'age': age.text.trim(),
-        'tel': tel.text.trim(),
-        'email': email.text.trim(),
-        'origine': origine,
-        'motifs': motifs.toList(),
-        'motif': motifs.isEmpty ? '' : motifs.join(', '),
-        'doctorId': selectedDoctorId,
-        'assistantId': widget.assistantProfileId,
-        'assistantName': widget.assistantName,
-        'assignedMedecinName': selectedDoctorData?['name'] ?? '',
-        'createdByAssistantProfileId': widget.assistantProfileId,
-        'parentUid': widget.parentUid,
-        'profileId': widget.assistantProfileId,
-        'createdAt': FieldValue.serverTimestamp(),
-      };
-
-      final doctorRef = FirebaseFirestore.instance
-          .collection('users')
-          .doc(widget.parentUid)
-          .collection('comptes')
-          .doc(selectedDoctorId)
-          .collection('patients')
-          .doc(patientId);
-      final assistantRef = FirebaseFirestore.instance
-          .collection('users')
-          .doc(widget.parentUid)
-          .collection('comptes')
-          .doc(widget.assistantProfileId)
-          .collection('patients')
-          .doc(patientId);
-
-      // Creation du patient sur le medecin et l'assistant
-      await Future.wait([doctorRef.set(data), assistantRef.set(data)]);
-
-      // Ajout en salle d'attente (assistant + medecin + principal)
-      try {
-        final addedToWaiting = await WaitingService().addToWaiting(
-          parentUid: widget.parentUid,
-          assistantId: widget.assistantProfileId,
-          assistantName: widget.assistantName,
-          doctorId: selectedDoctorId!,
-          doctorName: data['assignedMedecinName'] ?? '',
-          patientId: patientId,
-          patientNom: data['nom'] ?? '',
-          patientPrenom: data['prenom'] ?? '',
-        );
-        if (mounted && !addedToWaiting) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Patient deja en salle d\'attente')),
-          );
-        }
-      } catch (_) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Patient cree, mais echec ajout salle d\'attente'),
-            ),
-          );
-        }
-      }
-
-      // Enregistrer un formulaire initial (visible medecin et assistant)
-      final formContent = formulaireInitial.text.trim().isEmpty
-          ? "Dossier initial cree par l'assistant"
-          : formulaireInitial.text.trim();
-      final initialForm = {
-        'type': 'Dossier initial',
-        'contenu': formContent,
-        'createdAt': FieldValue.serverTimestamp(),
-        'auteurProfileId': widget.assistantProfileId,
-      };
-
-      await Future.wait([
-        doctorRef.collection('forms').add(initialForm),
-        assistantRef.collection('forms').add(initialForm),
-      ]);
-
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Patient cree et enregistre')));
-      Navigator.pop(context);
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Erreur lors de l'enregistrement")),
-      );
-    } finally {
-      if (mounted) {
-        setState(() => _isSaving = false);
-      }
-    }
   }
 
   @override
@@ -212,241 +134,806 @@ class _AddPatientFormState extends State<AddPatientForm> {
           }, SetOptions(merge: true));
         }
       }
-      if (fetched.isNotEmpty) {
-        setState(() {
-          motifsOptions = fetched;
-        });
+      if (fetched.isNotEmpty && mounted) {
+        setState(() => motifsOptions = fetched);
       }
     } catch (_) {
-      // ignore load failure, keep defaults
+      // Échec de chargement : on garde les motifs par défaut.
     }
   }
 
+  // ---------------------------------------------------------------
+  //  Navigation entre étapes
+  // ---------------------------------------------------------------
+
+  /// Ce qui manque à l'étape courante, ou `null` si elle est complète.
+  /// Sert à la fois à bloquer et à expliquer pourquoi.
+  String? _bloquant(int step) {
+    switch (step) {
+      case 0:
+        return (_identiteKey.currentState?.validate() ?? false)
+            ? null
+            : 'Corrigez les champs signalés';
+      case 1:
+        if (motifs.isEmpty) return 'Choisissez au moins un motif';
+        if (selectedDoctorId == null) return 'Choisissez un médecin';
+        return null;
+      default:
+        return null;
+    }
+  }
+
+  void _suivant() {
+    final erreur = _bloquant(_step);
+    if (erreur != null) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(erreur)));
+      return;
+    }
+    if (_step < _dernierStep) {
+      setState(() => _step++);
+    } else {
+      saveForm();
+    }
+  }
+
+  void _precedent() {
+    if (_step > 0) setState(() => _step--);
+  }
+
+  // ---------------------------------------------------------------
+  //  Enregistrement
+  // ---------------------------------------------------------------
+
+  Future<void> _erreur(String message) async {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> saveForm() async {
+    if (_isSaving) return;
+
+    // Filet de sécurité : l'assistant empêche déjà d'arriver ici incomplet,
+    // mais on ne fait pas confiance à la seule navigation.
+    if (!(_identiteKey.currentState?.validate() ?? false)) {
+      setState(() => _step = 0);
+      return _erreur('Corrigez les champs signalés');
+    }
+    if (motifs.isEmpty || selectedDoctorId == null) {
+      setState(() => _step = 1);
+      return _erreur('Motif et médecin sont obligatoires');
+    }
+
+    setState(() => _isSaving = true);
+    try {
+      final patientId = generateId();
+
+      // L'âge part désormais en **entier**. Les anciens dossiers l'ont en
+      // chaîne ; les lectures passent par asIntOrNull, qui accepte les deux.
+      final ageValue = int.tryParse(age.text.trim());
+
+      final data = {
+        'nom': nom.text.trim(),
+        'prenom': prenom.text.trim(),
+        if (ageValue != null) 'age': ageValue,
+        // Normalisé : +213… et 00213… deviennent 0…, pour que la recherche
+        // et les rappels WhatsApp retombent sur le même numéro.
+        'tel': v.normalizePhone(tel.text),
+        'email': email.text.trim(),
+        'origine': origine,
+        'motifs': motifs.toList(),
+        'motif': motifs.isEmpty ? '' : motifs.join(', '),
+        'doctorId': selectedDoctorId,
+        'assistantId': widget.assistantProfileId,
+        'assistantName': widget.assistantName,
+        'assignedMedecinName': selectedDoctorData?['name'] ?? '',
+        'createdByAssistantProfileId': widget.assistantProfileId,
+        'parentUid': widget.parentUid,
+        'profileId': widget.assistantProfileId,
+        'createdAt': FieldValue.serverTimestamp(),
+      };
+
+      final doctorRef = FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.parentUid)
+          .collection('comptes')
+          .doc(selectedDoctorId)
+          .collection('patients')
+          .doc(patientId);
+      final assistantRef = FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.parentUid)
+          .collection('comptes')
+          .doc(widget.assistantProfileId)
+          .collection('patients')
+          .doc(patientId);
+
+      // Création du patient sur le medecin et l'assistant, en une seule
+      // ecriture atomique : un echec partiel laissait le dossier visible
+      // d'un cote et absent de l'autre.
+      final batch = FirebaseFirestore.instance.batch();
+      batch.set(doctorRef, data);
+      batch.set(assistantRef, data);
+      await batch.commit();
+
+      // Ajout en salle d'attente (assistant + medecin + principal)
+      try {
+        final addedToWaiting = await WaitingService().addToWaiting(
+          parentUid: widget.parentUid,
+          assistantId: widget.assistantProfileId,
+          assistantName: widget.assistantName,
+          doctorId: selectedDoctorId!,
+          doctorName: (data['assignedMedecinName'] ?? '').toString(),
+          patientId: patientId,
+          patientNom: (data['nom'] ?? '').toString(),
+          patientPrenom: (data['prenom'] ?? '').toString(),
+        );
+        if (mounted && !addedToWaiting) {
+          await _erreur("Patient déjà en salle d'attente");
+        }
+      } catch (_) {
+        await _erreur("Patient créé, mais échec de l'ajout en salle d'attente");
+      }
+
+      // Formulaire initial, visible du médecin comme de l'assistant.
+      final formContent = formulaireInitial.text.trim().isEmpty
+          ? "Dossier initial créé par l'assistant"
+          : formulaireInitial.text.trim();
+      final initialForm = {
+        'type': 'Dossier initial',
+        'contenu': formContent,
+        'createdAt': FieldValue.serverTimestamp(),
+        'auteurProfileId': widget.assistantProfileId,
+        // Ces deux champs manquaient : sans eux, la recherche transversale
+        // des documents d'un patient ne remontait pas le dossier initial.
+        'parentUid': widget.parentUid,
+        'patientId': patientId,
+      };
+
+      await Future.wait([
+        doctorRef.collection('forms').add(initialForm),
+        assistantRef.collection('forms').add(initialForm),
+      ]);
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              '${nom.text.trim()} ${prenom.text.trim()} ajouté en salle d\'attente',
+            ),
+          ),
+        );
+      Navigator.pop(context);
+    } catch (_) {
+      await _erreur("Erreur lors de l'enregistrement");
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  // ---------------------------------------------------------------
+  //  Rendu
+  // ---------------------------------------------------------------
+
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
     return Scaffold(
       appBar: AppBar(
         elevation: 0,
         backgroundColor: Colors.transparent,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
+          tooltip: _step == 0 ? 'Annuler' : 'Étape précédente',
           onPressed: () {
-            if (Navigator.canPop(context)) Navigator.pop(context);
+            if (_step > 0) {
+              _precedent();
+            } else if (Navigator.canPop(context)) {
+              Navigator.pop(context);
+            }
           },
         ),
-        title: const Text('Ajouter patient'),
+        title: const Text('Nouveau patient'),
         flexibleSpace: Container(
           margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                Theme.of(context).colorScheme.primary,
-                Theme.of(context).colorScheme.secondary,
-              ],
+            gradient: AppTheme.brandGradient(context),
+            borderRadius: BorderRadius.circular(AppTheme.rCard),
+            boxShadow: AppTheme.shadow(context),
+          ),
+        ),
+      ),
+      body: Column(
+        children: [
+          _Progression(step: _step, total: _dernierStep + 1),
+          Expanded(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 640),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                  child: AnimatedSwitcher(
+                    duration: AppTheme.mid,
+                    switchInCurve: AppTheme.ease,
+                    transitionBuilder: (child, animation) => FadeTransition(
+                      opacity: animation,
+                      child: SlideTransition(
+                        position: Tween<Offset>(
+                          begin: const Offset(0.05, 0),
+                          end: Offset.zero,
+                        ).animate(animation),
+                        child: child,
+                      ),
+                    ),
+                    child: KeyedSubtree(
+                      key: ValueKey<int>(_step),
+                      child: switch (_step) {
+                        0 => _etapeIdentite(),
+                        1 => _etapeMotif(scheme),
+                        _ => _etapeNotes(scheme),
+                      },
+                    ),
+                  ),
+                ),
+              ),
             ),
-            borderRadius: BorderRadius.circular(18),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.12),
-                blurRadius: 18,
-                offset: const Offset(0, 8),
+          ),
+          _BarreActions(
+            step: _step,
+            dernier: _dernierStep,
+            isSaving: _isSaving,
+            onPrecedent: _precedent,
+            onSuivant: _isSaving ? null : _suivant,
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ---- Étape 1 : identité ----
+
+  Widget _etapeIdentite() {
+    return Form(
+      key: _identiteKey,
+      child: FluentCard(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const _TitreEtape(
+              titre: 'Identité du patient',
+              sous: 'Le nom suffit pour commencer. Le reste peut attendre.',
+              icone: Icons.badge_outlined,
+            ),
+            const SizedBox(height: 18),
+            AppField.nom(
+              controller: nom,
+              label: 'Nom',
+              icon: Icons.person_outline,
+              autofocus: true,
+            ),
+            const SizedBox(height: 12),
+            AppField.nom(
+              controller: prenom,
+              label: 'Prénom',
+              icon: Icons.person_outline,
+              obligatoire: false,
+            ),
+            const SizedBox(height: 12),
+            AppField.age(controller: age),
+            const SizedBox(height: 12),
+            AppField.phone(controller: tel),
+            const SizedBox(height: 12),
+            AppField.email(controller: email),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ---- Étape 2 : motif et médecin ----
+
+  Widget _etapeMotif(ColorScheme scheme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        FluentCard(
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const _TitreEtape(
+                titre: 'Motif de consultation',
+                sous: 'Au moins un motif est nécessaire.',
+                icone: Icons.assignment_outlined,
+              ),
+              const SizedBox(height: 16),
+              // Pastilles plutôt que cases à cocher empilées : on voit tous
+              // les motifs d'un coup et on en sélectionne plusieurs au tap.
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: motifsOptions.map((opt) {
+                  final actif = motifs.contains(opt);
+                  return FilterChip(
+                    selected: actif,
+                    label: Text(fmt.capitalize(fmt.humanize(opt))),
+                    onSelected: (on) => setState(() {
+                      if (on) {
+                        motifs.add(opt);
+                      } else {
+                        motifs.remove(opt);
+                      }
+                    }),
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 14),
+              AppField.text(
+                controller: motifAutre,
+                label: 'Autre motif',
+                hint: 'Si aucun des choix ci-dessus ne convient',
+                icon: Icons.add_comment_outlined,
+                onChanged: (val) => setState(() {
+                  motifs.removeWhere((m) => m.startsWith('autre:'));
+                  if (val.trim().isNotEmpty) motifs.add('autre:${val.trim()}');
+                }),
               ),
             ],
           ),
         ),
+        const SizedBox(height: 12),
+        FluentCard(
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const _TitreEtape(
+                titre: 'Comment nous a-t-il connus ?',
+                sous: 'Facultatif, mais utile pour vos statistiques.',
+                icone: Icons.travel_explore_outlined,
+              ),
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _origines.map((o) {
+                  final actif = origine == o.cle;
+                  return ChoiceChip(
+                    selected: actif,
+                    avatar: Icon(o.icone, size: 17),
+                    label: Text(o.libelle),
+                    // Un second tap désélectionne : l'origine est facultative,
+                    // et un bouton radio ne se dérange jamais.
+                    onSelected: (on) =>
+                        setState(() => origine = on ? o.cle : ''),
+                  );
+                }).toList(),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        FluentCard(
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _TitreEtape(
+                titre: 'Médecin destinataire',
+                sous: selectedDoctorData == null
+                    ? 'Touchez une carte pour choisir.'
+                    : 'Sélectionné : ${selectedDoctorData!['name'] ?? ''}',
+                icone: Icons.medical_services_outlined,
+                valide: selectedDoctorId != null,
+              ),
+              const SizedBox(height: 14),
+              MedecinsCards(
+                parentUid: widget.parentUid,
+                onTap: (docId, data) => setState(() {
+                  selectedDoctorId = docId;
+                  selectedDoctorData = data;
+                }),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ---- Étape 3 : notes et récapitulatif ----
+
+  Widget _etapeNotes(ColorScheme scheme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        FluentCard(
+          padding: const EdgeInsets.all(18),
+          child: Form(
+            key: _notesKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const _TitreEtape(
+                  titre: 'Note initiale',
+                  sous: 'Visible du médecin comme de l\'assistant.',
+                  icone: Icons.edit_note_outlined,
+                ),
+                const SizedBox(height: 16),
+                AppField.text(
+                  controller: formulaireInitial,
+                  label: 'Observations',
+                  hint: 'Laissez vide si rien de particulier',
+                  maxLines: 4,
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        _Recapitulatif(
+          nom: nom.text,
+          prenom: prenom.text,
+          age: age.text,
+          tel: tel.text,
+          email: email.text,
+          motifs: motifs.toList(),
+          origine: origine,
+          medecin: (selectedDoctorData?['name'] ?? '').toString(),
+          onCorriger: (step) => setState(() => _step = step),
+        ),
+      ],
+    );
+  }
+}
+
+/// Barre de progression et nom de l'étape courante.
+class _Progression extends StatelessWidget {
+  final int step;
+  final int total;
+
+  const _Progression({required this.step, required this.total});
+
+  static const _noms = ['Identité', 'Motif et médecin', 'Note et validation'];
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+      color: scheme.surface,
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Text(
+                'Étape ${step + 1} sur $total',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.4,
+                  color: scheme.primary,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  _noms[step],
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: scheme.onSurface.withValues(alpha: 0.7),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: List.generate(total, (i) {
+              final atteint = i <= step;
+              return Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(right: i == total - 1 ? 0 : 6),
+                  child: AnimatedContainer(
+                    duration: AppTheme.mid,
+                    curve: AppTheme.ease,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(999),
+                      color: atteint
+                          ? scheme.primary
+                          : scheme.outline.withValues(alpha: 0.4),
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ),
+        ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            FluentCard(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Coordonnees patient',
-                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: nom,
-                    decoration: const InputDecoration(labelText: 'Nom'),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: prenom,
-                    decoration: const InputDecoration(labelText: 'Prenom'),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: age,
-                    decoration: const InputDecoration(labelText: 'Age'),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: tel,
-                    decoration: const InputDecoration(labelText: 'Telephone'),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: email,
-                    decoration: const InputDecoration(labelText: 'Email'),
-                  ),
-                ],
+    );
+  }
+}
+
+/// En-tête d'étape : titre, sous-titre explicatif, pastille d'icône.
+class _TitreEtape extends StatelessWidget {
+  final String titre;
+  final String sous;
+  final IconData icone;
+  final bool valide;
+
+  const _TitreEtape({
+    required this.titre,
+    required this.sous,
+    required this.icone,
+    this.valide = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final couleur = valide ? const Color(0xFF16A34A) : scheme.primary;
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          height: 40,
+          width: 40,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            color: Color.alphaBlend(
+              couleur.withValues(alpha: 0.14),
+              scheme.surface,
+            ),
+          ),
+          child: Icon(valide ? Icons.check : icone, size: 20, color: couleur),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                titre,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.2,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                sous,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  color: scheme.onSurface.withValues(alpha: 0.62),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Récapitulatif de fin : ce qui sera enregistré, avec retour direct à
+/// l'étape concernée pour corriger sans tout reprendre.
+class _Recapitulatif extends StatelessWidget {
+  final String nom;
+  final String prenom;
+  final String age;
+  final String tel;
+  final String email;
+  final List<String> motifs;
+  final String origine;
+  final String medecin;
+  final ValueChanged<int> onCorriger;
+
+  const _Recapitulatif({
+    required this.nom,
+    required this.prenom,
+    required this.age,
+    required this.tel,
+    required this.email,
+    required this.motifs,
+    required this.origine,
+    required this.medecin,
+    required this.onCorriger,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final libellesMotifs = motifs
+        .map((m) => m.startsWith('autre:') ? m.substring(6) : fmt.humanize(m))
+        .join(', ');
+    final origineLibelle = _origines
+        .where((o) => o.cle == origine)
+        .map((o) => o.libelle)
+        .firstOrNull;
+
+    return FluentCard(
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _TitreEtape(
+            titre: 'Récapitulatif',
+            sous: 'Vérifiez avant d\'enregistrer.',
+            icone: Icons.fact_check_outlined,
+          ),
+          const SizedBox(height: 16),
+          _Ligne(
+            label: 'Patient',
+            valeur: '$nom $prenom'.trim(),
+            onCorriger: () => onCorriger(0),
+          ),
+          _Ligne(
+            label: 'Âge',
+            valeur: age.trim().isEmpty ? null : '$age ans',
+            onCorriger: () => onCorriger(0),
+          ),
+          _Ligne(
+            label: 'Téléphone',
+            valeur: tel.trim().isEmpty ? null : fmt.phone(v.normalizePhone(tel)),
+            onCorriger: () => onCorriger(0),
+          ),
+          _Ligne(
+            label: 'E-mail',
+            valeur: email.trim().isEmpty ? null : email.trim(),
+            onCorriger: () => onCorriger(0),
+          ),
+          Divider(color: scheme.outline.withValues(alpha: 0.5), height: 22),
+          _Ligne(
+            label: 'Motifs',
+            valeur: libellesMotifs.isEmpty ? null : fmt.capitalize(libellesMotifs),
+            onCorriger: () => onCorriger(1),
+          ),
+          _Ligne(
+            label: 'Origine',
+            valeur: origineLibelle,
+            onCorriger: () => onCorriger(1),
+          ),
+          _Ligne(
+            label: 'Médecin',
+            valeur: medecin.isEmpty ? null : medecin,
+            onCorriger: () => onCorriger(1),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Ligne extends StatelessWidget {
+  final String label;
+  final String? valeur;
+  final VoidCallback onCorriger;
+
+  const _Ligne({
+    required this.label,
+    required this.valeur,
+    required this.onCorriger,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final vide = valeur == null || valeur!.trim().isEmpty;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 92,
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: scheme.onSurface.withValues(alpha: 0.6),
               ),
             ),
-            const SizedBox(height: 12),
-            FluentCard(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Orientation et motif',
-                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
-                  ),
-                  const SizedBox(height: 12),
-                  const Text('Comment nous avez-vous connu ?'),
-                  RadioListTile(
-                    title: const Text('Reseaux sociaux'),
-                    value: 'reseaux',
-                    dense: true,
-                    groupValue: origine,
-                    onChanged: (v) => setState(() => origine = v as String),
-                  ),
-                  RadioListTile(
-                    title: const Text('Famille / amis (bouche a oreille)'),
-                    value: 'famille_amis_bouche_a_oreille',
-                    dense: true,
-                    groupValue: origine,
-                    onChanged: (v) => setState(() => origine = v as String),
-                  ),
-                  RadioListTile(
-                    title: const Text(
-                      'Proximite geographique / passage devant la clinique',
-                    ),
-                    value: 'proximite_geographique_passage',
-                    dense: true,
-                    groupValue: origine,
-                    onChanged: (v) => setState(() => origine = v as String),
-                  ),
-                  RadioListTile(
-                    title: const Text('Site internet'),
-                    value: 'internet',
-                    dense: true,
-                    groupValue: origine,
-                    onChanged: (v) => setState(() => origine = v as String),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text('Motif de consultation'),
-                  ...motifsOptions.map(
-                    (opt) => CheckboxListTile(
-                      title: Text(opt),
-                      value: motifs.contains(opt),
-                      dense: true,
-                      onChanged: (v) {
-                        setState(() {
-                          if (v == true) {
-                            motifs.add(opt);
-                          } else {
-                            motifs.remove(opt);
-                          }
-                        });
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: motifAutre,
-                    decoration: const InputDecoration(
-                      labelText: 'Autre motif (optionnel)',
-                      hintText: 'Saisir un motif supplementaire',
-                    ),
-                    onChanged: (v) {
-                      setState(() {
-                        motifs.removeWhere((m) => m.startsWith('autre:'));
-                        if (v.trim().isNotEmpty) {
-                          motifs.add('autre:${v.trim()}');
-                        }
-                      });
-                    },
-                  ),
-                ],
+          ),
+          Expanded(
+            child: Text(
+              vide ? 'Non renseigné' : valeur!,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: vide ? FontWeight.w400 : FontWeight.w700,
+                fontStyle: vide ? FontStyle.italic : FontStyle.normal,
+                color: vide
+                    ? scheme.onSurface.withValues(alpha: 0.45)
+                    : scheme.onSurface,
               ),
             ),
-            const SizedBox(height: 12),
-            FluentCard(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Medecin destinataire',
-                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+          ),
+          IconButton(
+            tooltip: 'Corriger',
+            visualDensity: VisualDensity.compact,
+            iconSize: 17,
+            icon: const Icon(Icons.edit_outlined),
+            onPressed: onCorriger,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Boutons de navigation, épinglés en bas pour rester accessibles.
+class _BarreActions extends StatelessWidget {
+  final int step;
+  final int dernier;
+  final bool isSaving;
+  final VoidCallback onPrecedent;
+  final VoidCallback? onSuivant;
+
+  const _BarreActions({
+    required this.step,
+    required this.dernier,
+    required this.isSaving,
+    required this.onPrecedent,
+    required this.onSuivant,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final dernierEtape = step == dernier;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        border: Border(
+          top: BorderSide(color: scheme.outline.withValues(alpha: 0.5)),
+        ),
+      ),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 640),
+          child: Row(
+            children: [
+              if (step > 0) ...[
+                FluentButton(
+                  label: 'Retour',
+                  icon: Icons.arrow_back,
+                  type: FluentButtonType.ghost,
+                  onPressed: isSaving ? null : onPrecedent,
+                ),
+                const SizedBox(width: 10),
+              ],
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: FluentButton(
+                    label: dernierEtape ? 'Enregistrer le patient' : 'Continuer',
+                    icon: dernierEtape
+                        ? Icons.check_circle_outline
+                        : Icons.arrow_forward,
+                    onPressed: onSuivant,
+                    isLoading: isSaving,
                   ),
-                  const SizedBox(height: 10),
-                  MedecinsCards(
-                    parentUid: widget.parentUid,
-                    onTap: (docId, data) {
-                      setState(() {
-                        selectedDoctorId = docId;
-                        selectedDoctorData = data;
-                      });
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            'Medecin selectionne: ${data['name'] ?? ''}',
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                  if (selectedDoctorData != null) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      'Medecin selectionne: ${selectedDoctorData!['name']}',
-                      style: const TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                  ],
-                ],
+                ),
               ),
-            ),
-            const SizedBox(height: 12),
-            FluentCard(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Formulaire initial',
-                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: formulaireInitial,
-                    maxLines: 4,
-                    decoration: const InputDecoration(
-                      labelText: 'Notes (visible medecin & assistant)',
-                      alignLabelWithHint: true,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 18),
-            SizedBox(
-              width: double.infinity,
-              child: FluentButton(
-                label: 'Enregistrer',
-                icon: Icons.save_outlined,
-                onPressed: _isSaving ? null : saveForm,
-                isLoading: _isSaving,
-              ),
-            ),
-            const SizedBox(height: 8),
-          ],
+            ],
+          ),
         ),
       ),
     );

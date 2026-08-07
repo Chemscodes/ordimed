@@ -23,6 +23,7 @@ import '../core/coerce.dart';
 import '../core/clinical.dart';
 import '../ui/app_field.dart';
 import '../widgets/computed_fields.dart';
+import '../widgets/patient_filters.dart';
 
 /// Rend le contenu d'un dialogue defilable et borne sa hauteur.
 ///
@@ -1216,7 +1217,7 @@ class _PatientsTab extends StatefulWidget {
 
 class _PatientsTabState extends State<_PatientsTab> {
   final TextEditingController _searchCtrl = TextEditingController();
-  String _query = '';
+  PatientQuery _pq = const PatientQuery();
   final WaitingService _waitingService = WaitingService();
   final ScrollController _patientsScrollCtrl = ScrollController();
   final Set<String> _deletingPatientIds = <String>{};
@@ -1590,40 +1591,31 @@ class _PatientsTabState extends State<_PatientsTab> {
                       contentPadding: const EdgeInsets.symmetric(vertical: 12),
                     ),
                     onChanged: (v) =>
-                        setState(() => _query = v.trim().toLowerCase()),
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 7,
-                  ),
-                  decoration: BoxDecoration(
-                    color: isDark
-                        ? scheme.secondary.withOpacity(0.18)
-                        : const Color(0xFFE8EEF8),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: Colors.white.withOpacity(isDark ? 0.12 : 0.65),
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: const [
-                      Icon(Icons.tune, size: 16, color: _PatientsTab.primary),
-                      SizedBox(width: 6),
-                      Text(
-                        'Filtres',
-                        style: TextStyle(
-                          color: _PatientsTab.primary,
-                          fontSize: 12,
+                        setState(
+                          () => _pq = _pq.copyWith(
+                            texte: v.trim().toLowerCase(),
+                          ),
                         ),
-                      ),
-                    ],
                   ),
                 ),
               ],
             ),
+          ),
+        ),
+        // Barre de filtres reelle. L'ancienne pastille « Filtres » etait
+        // purement decorative : elle n'ouvrait rien et ne filtrait rien.
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 12, 4, 4),
+          child: PatientFilterBar(
+            query: _pq,
+            onChanged: (q) {
+              setState(() {
+                _pq = q;
+                if (q.texte != _searchCtrl.text.trim().toLowerCase()) {
+                  _searchCtrl.text = q.texte;
+                }
+              });
+            },
           ),
         ),
         Expanded(
@@ -1652,18 +1644,12 @@ class _PatientsTabState extends State<_PatientsTab> {
                 );
               }
 
-              final filtered = patients.where((p) {
-                final data = p.data() as Map<String, dynamic>;
-                if (isDeleted(data)) return false;
-                final nom = (data['nom'] ?? '').toString();
-                final prenom = (data['prenom'] ?? '').toString();
-                final full = '$nom $prenom'.toLowerCase();
-                if (_query.isEmpty) return true;
-                return full.contains(_query);
-              }).toList();
+              // Un seul point de decision pour la recherche, les filtres
+              // rapides, le medecin et la suppression douce.
+              final filtered = _pq.filtrer(patients);
 
               if (filtered.isEmpty) {
-                if (canLoadMore && _query.isNotEmpty) {
+                if (canLoadMore && _pq.actif) {
                   return Center(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
