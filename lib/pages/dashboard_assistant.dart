@@ -11,8 +11,11 @@ import 'patient_details_page.dart';
 import 'profile_selector_page.dart';
 import 'stats_page.dart';
 import '../services/firestore_service.dart';
+import '../core/creneaux.dart';
 import '../core/parcours.dart';
+import '../services/recu_service.dart';
 import '../services/rendezvous_repository.dart';
+import 'choix_creneau_page.dart';
 import '../services/soft_delete.dart';
 import '../services/stats_service.dart';
 import '../services/waiting_service.dart';
@@ -181,26 +184,25 @@ class _DashboardAssistantState extends State<DashboardAssistant> {
       return;
     }
 
-    final pickedDate = await showDatePicker(
-      context: context,
-      initialDate: DateTime.now(),
-      firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
+    // Un selecteur de date puis un d'heure laissaient choisir n'importe
+    // quelle minute sans regarder ce qui etait deja pris. L'agenda du
+    // medecin decide desormais de ce qui est proposable.
+    final creneau = await Navigator.push<Creneau>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChoixCreneauPage(
+          parentUid: widget.parentUid,
+          doctorId: doctorId,
+          doctorName: (patient['assignedMedecinName'] ?? '').toString(),
+          patient: [
+            (patient['nom'] ?? '').toString(),
+            (patient['prenom'] ?? '').toString(),
+          ].where((s) => s.trim().isNotEmpty).join(' '),
+        ),
+      ),
     );
-    if (pickedDate == null) return;
-    final pickedTime = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.now(),
-    );
-    if (pickedTime == null) return;
-
-    final dt = DateTime(
-      pickedDate.year,
-      pickedDate.month,
-      pickedDate.day,
-      pickedTime.hour,
-      pickedTime.minute,
-    );
+    if (creneau == null) return;
+    final dt = creneau.debut;
 
     String reminderTemplate = '';
     try {
@@ -225,6 +227,10 @@ class _DashboardAssistantState extends State<DashboardAssistant> {
       'assistantId': widget.profileId,
       'motif': patient['motif'] ?? '',
       'datetime': Timestamp.fromDate(dt),
+      // Sans la duree, tout rendez-vous serait suppose durer le temps par
+      // defaut : une consultation d'une heure laisserait libres des creneaux
+      // qu'elle occupe en realite.
+      'duree': creneau.duree,
       'createdAt': FieldValue.serverTimestamp(),
       'parentUid': widget.parentUid,
     };
@@ -2332,8 +2338,9 @@ class _AssistantRdvTabState extends State<_AssistantRdvTab> {
     String rdvId,
     Map<String, dynamic> data,
     DateTime newDateTime,
-    String motif,
-  ) async {
+    String motif, [
+    int? duree,
+  ]) async {
     final doctorId = (data['doctorId'] ?? '').toString();
     final base = FirebaseFirestore.instance
         .collection('users')
@@ -2342,6 +2349,7 @@ class _AssistantRdvTabState extends State<_AssistantRdvTab> {
     final updateData = {
       'datetime': Timestamp.fromDate(newDateTime),
       'motif': motif,
+      if (duree != null) 'duree': duree,
       'updatedAt': FieldValue.serverTimestamp(),
     };
 
@@ -2386,6 +2394,7 @@ class _AssistantRdvTabState extends State<_AssistantRdvTab> {
       currentDt.day,
     );
     TimeOfDay selectedTime = TimeOfDay.fromDateTime(currentDt);
+    int? dureeChoisie = (data['duree'] as num?)?.toInt();
     final motifCtrl = TextEditingController(
       text: (data['motif'] ?? '').toString(),
     );
@@ -2409,44 +2418,39 @@ class _AssistantRdvTabState extends State<_AssistantRdvTab> {
                   decoration: const InputDecoration(labelText: 'Motif'),
                 ),
                 const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        icon: const Icon(Icons.date_range),
-                        label: Text(dateLabel),
-                        onPressed: () async {
-                          final picked = await showDatePicker(
-                            context: ctx,
-                            initialDate: selectedDate,
-                            firstDate: DateTime(2000),
-                            lastDate: DateTime.now().add(
-                              const Duration(days: 365 * 5),
-                            ),
-                          );
-                          if (picked != null) {
-                            setState(() => selectedDate = picked);
-                          }
-                        },
+                // Deplacer un rendez-vous passait par les memes selecteurs
+                // libres que la prise : on pouvait le poser sur un creneau
+                // deja occupe et contourner toute la detection de conflit.
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.event_outlined),
+                  label: Text('$dateLabel a $timeLabel'),
+                  onPressed: () async {
+                    final creneau = await Navigator.push<Creneau>(
+                      ctx,
+                      MaterialPageRoute(
+                        builder: (_) => ChoixCreneauPage(
+                          parentUid: widget.parentUid,
+                          doctorId: (data['doctorId'] ?? '').toString(),
+                          doctorName: (data['doctorName'] ?? '').toString(),
+                          patient: (data['patientNom'] ?? 'Patient').toString(),
+                          jourInitial: selectedDate,
+                          // Un rendez-vous deplace ne doit pas se voir
+                          // lui-meme comme l'obstacle a son deplacement.
+                          ignorerRdvId: rdvId,
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        icon: const Icon(Icons.schedule),
-                        label: Text(timeLabel),
-                        onPressed: () async {
-                          final picked = await showTimePicker(
-                            context: ctx,
-                            initialTime: selectedTime,
-                          );
-                          if (picked != null) {
-                            setState(() => selectedTime = picked);
-                          }
-                        },
-                      ),
-                    ),
-                  ],
+                    );
+                    if (creneau == null) return;
+                    setState(() {
+                      selectedDate = DateTime(
+                        creneau.debut.year,
+                        creneau.debut.month,
+                        creneau.debut.day,
+                      );
+                      selectedTime = TimeOfDay.fromDateTime(creneau.debut);
+                      dureeChoisie = creneau.duree;
+                    });
+                  },
                 ),
               ],
             )),
@@ -2475,7 +2479,7 @@ class _AssistantRdvTabState extends State<_AssistantRdvTab> {
       selectedTime.minute,
     );
     final motif = motifCtrl.text.trim();
-    await _updateRdv(context, rdvId, data, newDateTime, motif);
+    await _updateRdv(context, rdvId, data, newDateTime, motif, dureeChoisie);
   }
 
   Future<void> _deleteRdv(
@@ -3324,6 +3328,67 @@ if (doctor.isNotEmpty) 'Dr $doctor',
     }
   }
 
+  /// Imprime le recu d'un versement.
+  ///
+  /// L'identite du cabinet vient du profil qui encaisse : c'est lui qui
+  /// porte l'adresse et le telephone dans le reste de l'app.
+  Future<void> _imprimerRecu({
+    required Map<String, dynamic> patientData,
+    required double montant,
+    required double nouveauTotal,
+  }) async {
+    try {
+      final profil = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.parentUid)
+          .collection('comptes')
+          .doc(widget.profileId)
+          .get();
+      final p = profil.data() ?? {};
+
+      final patient = [
+        (patientData['nom'] ?? '').toString(),
+        (patientData['prenom'] ?? '').toString(),
+      ].where((s) => s.trim().isNotEmpty).join(' ');
+
+      // Le reglement est recalcule avec le total d'apres versement : le
+      // recu doit montrer l'etat du dossier une fois l'argent encaisse,
+      // pas celui d'avant.
+      final reglement = Reglement.fromPatient({
+        ...patientData,
+        'totalVersements': nouveauTotal,
+      });
+
+      final fichier = await RecuService().imprimer(
+        cabinet: [
+          (p['nom'] ?? '').toString(),
+          (p['prenom'] ?? '').toString(),
+        ].where((s) => s.trim().isNotEmpty).join(' '),
+        adresse: [
+          (p['address'] ?? p['adresse'] ?? '').toString(),
+          (p['wilaya'] ?? '').toString(),
+        ].where((s) => s.trim().isNotEmpty).join(', '),
+        telephone: (p['tel'] ?? p['telephone'] ?? '').toString(),
+        patient: patient.isEmpty ? 'Patient' : patient,
+        montant: montant,
+        date: DateTime.now(),
+        reglement: reglement,
+        encaissePar: (p['nom'] ?? '').toString(),
+        motif: (patientData['motif'] ?? '').toString(),
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Recu enregistre : ${fichier.path}')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Echec de la generation du recu')),
+      );
+    }
+  }
+
   Future<void> _addVersement(
     BuildContext context,
     QueryDocumentSnapshot doc,
@@ -3462,9 +3527,23 @@ if (doctor.isNotEmpty) 'Dr $doctor',
       );
 
       if (context.mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Versement ajoute')));
+        // Un versement etait encaisse et rien n'etait imprime : le patient
+        // repartait sans trace, et le cabinet non plus. Une contestation
+        // trois mois plus tard ne se tranchait avec rien.
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Versement ajoute'),
+            action: SnackBarAction(
+              label: 'Imprimer le recu',
+              onPressed: () => _imprimerRecu(
+                patientData: patientData,
+                montant: montant,
+                nouveauTotal: newTotal,
+              ),
+            ),
+            duration: const Duration(seconds: 8),
+          ),
+        );
       }
     } catch (_) {
       if (context.mounted) {

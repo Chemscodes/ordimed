@@ -139,6 +139,24 @@ class RendezVousRepository {
     return true;
   }
 
+  /// Rendez-vous d'un profil sur une journée, du plus tôt au plus tard.
+  ///
+  /// Sert à savoir ce qui est déjà pris avant d'en poser un nouveau.
+  Stream<QuerySnapshot<Map<String, dynamic>>> journee({
+    required String parentUid,
+    required String profileId,
+    required DateTime jour,
+  }) {
+    final debut = DateTime(jour.year, jour.month, jour.day);
+    final fin = debut.add(const Duration(days: 1));
+    return _comptes(parentUid)
+        .doc(profileId)
+        .collection('rendezvous')
+        .where('datetime', isGreaterThanOrEqualTo: Timestamp.fromDate(debut))
+        .where('datetime', isLessThan: Timestamp.fromDate(fin))
+        .snapshots();
+  }
+
   /// Marque honoré le rendez-vous d'où vient une consultation.
   ///
   /// Sans effet quand la consultation n'est rattachée à aucun rendez-vous —
