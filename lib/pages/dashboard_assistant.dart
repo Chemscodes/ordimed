@@ -1981,13 +1981,24 @@ class _AssistantRdvTabState extends State<_AssistantRdvTab> {
     );
     if (confirme != true) return;
 
+    if (!context.mounted) return;
+    await _changerEtapeRdv(context, rdvId, rdv, EtapeParcours.absent);
+  }
+
+  /// Fait avancer un rendez-vous d'une etape.
+  Future<void> _changerEtapeRdv(
+    BuildContext context,
+    String rdvId,
+    Map<String, dynamic> rdv,
+    EtapeParcours etape,
+  ) async {
     try {
       await RendezVousRepository().changerEtape(
         parentUid: widget.parentUid,
         rdvId: rdvId,
         doctorId: (rdv['doctorId'] ?? '').toString(),
         assistantId: (rdv['assistantId'] ?? widget.profileId).toString(),
-        etape: EtapeParcours.absent,
+        etape: etape,
       );
     } catch (_) {
       if (!context.mounted) return;
@@ -2770,6 +2781,27 @@ class _AssistantRdvTabState extends State<_AssistantRdvTab> {
                             Wrap(
                               spacing: 4,
                               children: [
+                                // L'etape « confirme » existait dans le
+                                // modele sans qu'aucun bouton ne la pose :
+                                // le code la lisait, la vraie vie ne
+                                // l'atteignait jamais.
+                                if (etape == EtapeParcours.planifie)
+                                  IconButton(
+                                    tooltip: 'Confirmer le rendez-vous',
+                                    icon: Icon(
+                                      Icons.event_available_outlined,
+                                      size: 18,
+                                      color: EtapeParcours.confirme.couleur(
+                                        scheme,
+                                      ),
+                                    ),
+                                    onPressed: () => _changerEtapeRdv(
+                                      context,
+                                      rdvId,
+                                      d,
+                                      EtapeParcours.confirme,
+                                    ),
+                                  ),
                                 if (etape.suivantes.contains(
                                   EtapeParcours.absent,
                                 ))

@@ -160,20 +160,4 @@ class RendezVousRepository {
     );
   }
 
-  /// Rendez-vous d'un profil sur une journée, du plus tôt au plus tard.
-  Stream<QuerySnapshot<Map<String, dynamic>>> journee({
-    required String parentUid,
-    required String profileId,
-    required DateTime jour,
-  }) {
-    final debut = DateTime(jour.year, jour.month, jour.day);
-    final fin = debut.add(const Duration(days: 1));
-    return _comptes(parentUid)
-        .doc(profileId)
-        .collection('rendezvous')
-        .where('datetime', isGreaterThanOrEqualTo: Timestamp.fromDate(debut))
-        .where('datetime', isLessThan: Timestamp.fromDate(fin))
-        .orderBy('datetime')
-        .snapshots();
-  }
 }
