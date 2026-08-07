@@ -11,17 +11,9 @@ import '../services/firestore_service.dart';
 import '../services/soft_delete.dart';
 import '../services/waiting_service.dart';
 import '../widgets/daily_versements_card.dart';
+import '../core/coerce.dart';
 
-int? _toInt(dynamic v) {
-  if (v == null) return null;
-  if (v is num) return v.toInt();
-  if (v is String) {
-    final raw = v.trim();
-    if (raw.isEmpty) return null;
-    return int.tryParse(raw);
-  }
-  return null;
-}
+int? _toInt(dynamic v) => asIntOrNull(v);
 
 class DashboardMedecin extends StatefulWidget {
   final String parentUid;

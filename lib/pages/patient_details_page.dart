@@ -11,6 +11,12 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/firestore_service.dart';
+import '../core/coerce.dart';
+import '../core/clinical.dart';
+import '../core/format.dart' as fmt;
+import '../core/validate.dart' as v;
+import '../ui/app_field.dart';
+import '../widgets/computed_fields.dart';
 
 /// Rend le contenu d'un dialogue defilable et borne sa hauteur.
 ///
@@ -413,19 +419,64 @@ class PatientDetailsPage extends StatelessWidget {
                                       suffix: 'cm',
                                     ),
                                     _MetricCard(label: 'IMC', value: metricImc),
+                                    // Les motifs et origines sont stockés en
+                                    // clé technique. Sans espaces, Flutter
+                                    // coupait « famille_amis_bouche_a_oreille »
+                                    // en plein milieu d'un mot.
                                     _MetricCard(
                                       label: 'Motif',
-                                      value:
-                                          patientData['motif'] ??
-                                          'Non renseigne',
+                                      value: fmt.capitalize(
+                                        fmt.humanize(patientData['motif']),
+                                      ),
+                                      fallback: 'Non renseigné',
                                     ),
                                     _MetricCard(
                                       label: 'Origine',
-                                      value:
-                                          patientData['origine'] ??
-                                          'Non renseignee',
+                                      value: fmt.capitalize(
+                                        fmt.humanize(patientData['origine']),
+                                      ),
+                                      fallback: 'Non renseignée',
                                     ),
                                   ],
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              // Valeurs déduites : ni l'une ni l'autre n'est
+                              // saisie, toutes deux se recalculent à chaque
+                              // versement et à chaque séance clôturée.
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                ),
+                                child: LayoutBuilder(
+                                  builder: (context, c) {
+                                    final reglement = ReglementSummary(
+                                      reglement: Reglement.fromPatient(
+                                        patientData,
+                                      ),
+                                    );
+                                    final seances = SeancesSummary(
+                                      seances: Seances.fromPatient(patientData),
+                                    );
+                                    if (c.maxWidth < 560) {
+                                      return Column(
+                                        children: [
+                                          reglement,
+                                          const SizedBox(height: 12),
+                                          seances,
+                                        ],
+                                      );
+                                    }
+                                    return Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Expanded(child: reglement),
+                                        const SizedBox(width: 12),
+                                        Expanded(child: seances),
+                                      ],
+                                    );
+                                  },
                                 ),
                               ),
                               const SizedBox(height: 12),
@@ -556,21 +607,9 @@ class PatientDetailsPage extends StatelessWidget {
     );
   }
 
-  double? _parseDouble(dynamic value) {
-    if (value == null) return null;
-    if (value is num) return value.toDouble();
-    final raw = value.toString().replaceAll(',', '.').trim();
-    if (raw.isEmpty) return null;
-    return double.tryParse(raw);
-  }
+  double? _parseDouble(dynamic value) => asDoubleOrNull(value);
 
-  int? _parseInt(dynamic value) {
-    if (value == null) return null;
-    if (value is num) return value.toInt();
-    final raw = value.toString().trim();
-    if (raw.isEmpty) return null;
-    return int.tryParse(raw);
-  }
+  int? _parseInt(dynamic value) => asIntOrNull(value);
 
   int? _computeSeanceNumero(Map<String, dynamic> patientData) {
     final done = _parseInt(patientData['seancesEffectuees']);
@@ -3006,20 +3045,32 @@ class PatientDetailsPage extends StatelessWidget {
                   '6. Etat nutritionnel',
                   style: TextStyle(fontWeight: FontWeight.w700),
                 ),
-                TextField(
+                const SizedBox(height: 8),
+                AppField.mesure(
                   controller: poidsActuelCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Poids actuel (kg)',
-                  ),
+                  label: 'Poids actuel',
+                  unite: 'kg',
+                  icon: Icons.monitor_weight_outlined,
+                  validator: v.poids,
                 ),
-                TextField(
+                const SizedBox(height: 10),
+                AppField.mesure(
                   controller: tailleCtrl,
-                  decoration: const InputDecoration(labelText: 'Taille (cm)'),
+                  label: 'Taille',
+                  unite: 'cm',
+                  icon: Icons.height,
+                  validator: v.taille,
                 ),
-                TextField(
-                  controller: imcCtrl,
-                  decoration: const InputDecoration(labelText: 'IMC'),
+                const SizedBox(height: 10),
+                // L'IMC n'est plus saisi : il se déduit des deux champs
+                // ci-dessus. `imcCtrl` reste alimenté pour que le code
+                // d'enregistrement plus bas continue de fonctionner.
+                BmiField(
+                  poidsCtrl: poidsActuelCtrl,
+                  tailleCtrl: tailleCtrl,
+                  syncTo: imcCtrl,
                 ),
+                const SizedBox(height: 10),
                 TextField(
                   controller: poidsSouhaiteCtrl,
                   decoration: const InputDecoration(
@@ -3875,7 +3926,16 @@ class _MetricCard extends StatelessWidget {
   final String value;
   final String? suffix;
 
-  const _MetricCard({required this.label, required this.value, this.suffix});
+  /// Texte affiché quand [value] est vide. Évite de propager des
+  /// « Non renseigne » en dur dans chaque appel.
+  final String fallback;
+
+  const _MetricCard({
+    required this.label,
+    required this.value,
+    this.suffix,
+    this.fallback = 'Non renseigné',
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -3918,7 +3978,9 @@ class _MetricCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            suffix == null ? value : '$value ${suffix ?? ''}',
+            value.trim().isEmpty
+                ? fallback
+                : (suffix == null ? value : '$value $suffix'),
             style: TextStyle(
               fontWeight: FontWeight.w700,
               fontSize: 18,

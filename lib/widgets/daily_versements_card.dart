@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import '../services/firestore_service.dart';
 import '../ui/fluent_card.dart';
+import '../core/coerce.dart';
 
 class DailyVersementsCard extends StatelessWidget {
   final String parentUid;
@@ -135,10 +136,7 @@ class DailyVersementsCard extends StatelessWidget {
   }
 }
 
-double? _asDouble(dynamic value) {
-  if (value is num) return value.toDouble();
-  return double.tryParse(value?.toString() ?? '');
-}
+double? _asDouble(dynamic value) => asDoubleOrNull(value);
 
 bool _shouldSkipPatient(Map<String, dynamic> patientData, [Set<String>? allowedDoctorIds]) {
   if (allowedDoctorIds == null || allowedDoctorIds.isEmpty) return false;
@@ -151,11 +149,8 @@ bool _isToday(DateTime date, DateTime start, DateTime end) {
   return date.isAfter(start.subtract(const Duration(milliseconds: 1))) && date.isBefore(end);
 }
 
-DateTime _asDate(dynamic value) {
-  if (value is Timestamp) return value.toDate();
-  if (value is DateTime) return value;
-  return DateTime.fromMillisecondsSinceEpoch(0);
-}
+DateTime _asDate(dynamic value) =>
+    asDateOrNull(value) ?? DateTime.fromMillisecondsSinceEpoch(0);
 
 String _formatMoney(double value) {
   final isInt = value.truncateToDouble() == value;

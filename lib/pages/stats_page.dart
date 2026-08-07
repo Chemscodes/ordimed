@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../services/stats_service.dart';
 import '../ui/fluent_card.dart';
 import '../ui/fluent_theme.dart';
+import '../core/coerce.dart';
 
 class StatsPage extends StatelessWidget {
   final String parentUid;
@@ -23,26 +24,10 @@ class StatsPage extends StatelessWidget {
     return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
   }
 
-  double _toDouble(dynamic value) {
-    if (value is num) return value.toDouble();
-    return double.tryParse(value?.toString() ?? '') ?? 0;
-  }
+  double _toDouble(dynamic value) => asDouble(value);
 
-  DateTime? _parseDayKey(String dayKey) {
-    final parts = dayKey.split('-');
-    if (parts.length != 3) return null;
-    final y = int.tryParse(parts[0]);
-    final m = int.tryParse(parts[1]);
-    final d = int.tryParse(parts[2]);
-    if (y == null || m == null || d == null) return null;
-    return DateTime(y, m, d);
-  }
-
-  DateTime _asDate(dynamic value, String dayKey) {
-    if (value is Timestamp) return value.toDate();
-    if (value is DateTime) return value;
-    return _parseDayKey(dayKey) ?? DateTime.now();
-  }
+  DateTime _asDate(dynamic value, String dayKey) =>
+      asDateOrNull(value) ?? dateFromDayKey(dayKey) ?? DateTime.now();
 
   String _formatMoney(double value) {
     final isInt = value.truncateToDouble() == value;

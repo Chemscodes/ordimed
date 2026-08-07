@@ -12,17 +12,9 @@ import '../ui/fluent_button.dart';
 import '../services/firestore_service.dart';
 import '../services/stats_service.dart';
 import '../widgets/daily_versements_card.dart';
+import '../core/coerce.dart';
 
-int? _toInt(dynamic v) {
-  if (v == null) return null;
-  if (v is num) return v.toInt();
-  if (v is String) {
-    final raw = v.trim();
-    if (raw.isEmpty) return null;
-    return int.tryParse(raw);
-  }
-  return null;
-}
+int? _toInt(dynamic v) => asIntOrNull(v);
 
 class DashboardPrincipal extends StatefulWidget {
   final String parentUid;
@@ -745,10 +737,7 @@ class _VersementCardsForDayState extends State<_VersementCardsForDay> {
     );
   }
 
-  double _asDouble(dynamic value) {
-    if (value is num) return value.toDouble();
-    return double.tryParse(value?.toString() ?? '') ?? 0;
-  }
+  double _asDouble(dynamic value) => asDouble(value);
 
   String _todayKey() {
     final now = DateTime.now();
@@ -1164,10 +1153,7 @@ class _NetDailyCardPrincipal extends StatelessWidget {
     );
   }
 
-  double? _asDouble(dynamic value) {
-    if (value is num) return value.toDouble();
-    return double.tryParse(value?.toString() ?? '');
-  }
+  double? _asDouble(dynamic value) => asDoubleOrNull(value);
 
   String _formatMoney(double value) {
     final isInt = value.truncateToDouble() == value;

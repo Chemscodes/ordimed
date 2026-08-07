@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../core/coerce.dart';
 
 class WaitingService {
   WaitingService._internal();
@@ -8,12 +9,7 @@ class WaitingService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   static const Duration _staleOpenThreshold = Duration(hours: 24);
 
-  DateTime? _asDateTime(dynamic value) {
-    if (value is Timestamp) return value.toDate();
-    if (value is DateTime) return value;
-    if (value is String) return DateTime.tryParse(value);
-    return null;
-  }
+  DateTime? _asDateTime(dynamic value) => asDateOrNull(value);
 
   bool _isDoneEntry(Map<String, dynamic> data) {
     final status = (data['status'] ?? '').toString().toLowerCase();

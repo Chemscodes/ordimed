@@ -19,6 +19,10 @@ import '../ui/app_shell.dart';
 import '../ui/fluent_button.dart';
 import '../ui/fluent_card.dart';
 import '../widgets/daily_versements_card.dart';
+import '../core/coerce.dart';
+import '../core/clinical.dart';
+import '../ui/app_field.dart';
+import '../widgets/computed_fields.dart';
 
 /// Rend le contenu d'un dialogue defilable et borne sa hauteur.
 ///
@@ -33,22 +37,9 @@ Widget _scrollableDialogContent(BuildContext context, Widget child) {
 }
 
 
-double _toDouble(dynamic v) {
-  if (v is num) return v.toDouble();
-  if (v is String) return double.tryParse(v.replaceAll(',', '.')) ?? 0;
-  return 0;
-}
+double _toDouble(dynamic v) => asDouble(v);
 
-int? _toInt(dynamic v) {
-  if (v == null) return null;
-  if (v is num) return v.toInt();
-  if (v is String) {
-    final raw = v.trim();
-    if (raw.isEmpty) return null;
-    return int.tryParse(raw);
-  }
-  return null;
-}
+int? _toInt(dynamic v) => asIntOrNull(v);
 
 class DashboardAssistant extends StatefulWidget {
   final String parentUid;
@@ -3210,10 +3201,8 @@ class _RendezVousTabState extends State<_RendezVousTab> {
       return;
     }
 
-    final prix = double.tryParse((patientData['prix'] ?? '').toString());
-    final currentTotal =
-        double.tryParse((patientData['totalVersements'] ?? '0').toString()) ??
-        0;
+    final reglement = Reglement.fromPatient(patientData);
+    final currentTotal = reglement.verse;
 
     final montantCtrl = TextEditingController();
     final res = await showDialog<bool>(
@@ -3224,25 +3213,30 @@ class _RendezVousTabState extends State<_RendezVousTab> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (prix != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Text(
-                  'Prix total: ${prix.toStringAsFixed(2)} DA',
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-              ),
-            Text('Deja paye: ${currentTotal.toStringAsFixed(2)} DA'),
-            const SizedBox(height: 8),
-            TextField(
+            // L'état du dossier avant toute saisie : le reste à payer est
+            // ce que l'assistant cherche neuf fois sur dix.
+            ReglementSummary(reglement: reglement),
+            const SizedBox(height: 14),
+            AppField.montant(
               controller: montantCtrl,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              decoration: const InputDecoration(
-                labelText: 'Montant',
-                prefixText: 'DA ',
-              ),
+              label: 'Montant encaissé',
+              obligatoire: true,
+              autofocus: true,
+            ),
+            const SizedBox(height: 10),
+            // Un tap plutôt qu'une saisie : le geste le plus courant du
+            // cabinet est d'encaisser exactement le reste dû.
+            MontantsSuggeres(
+              suggestions: {
+                if (reglement.reste != null) 'Solde': reglement.reste!,
+                if (reglement.reste != null && reglement.reste! > 1)
+                  'Moitié': (reglement.reste! / 2).roundToDouble(),
+              },
+              onChoisi: (m) {
+                montantCtrl.text = m.toStringAsFixed(
+                  m.truncateToDouble() == m ? 0 : 2,
+                );
+              },
             ),
           ],
         )),
