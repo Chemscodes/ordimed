@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'profile_selector_page.dart';
+import 'consultation_page.dart';
 import 'patient_details_page.dart';
 import 'stats_page.dart';
 import '../ui/app_shell.dart';
@@ -855,7 +856,6 @@ class _RendezVousTabState extends State<_RendezVousTab> {
   int _limit = _pageSize;
   bool _showAll = false;
   final WaitingService _waitingService = WaitingService();
-  final Set<String> _closingWaitingIds = <String>{};
 
   @override
   Widget build(BuildContext context) {
@@ -992,34 +992,25 @@ if (doctor.isNotEmpty) 'Dr $doctor',
 ]),
                           trailing: Wrap(
                             spacing: 8,
+                            crossAxisAlignment: WrapCrossAlignment.center,
                             children: [
                               IconButton(
-                                tooltip: 'Ouvrir dossier',
-                                icon: const Icon(Icons.folder_open),
+                                tooltip: 'Ouvrir le dossier',
+                                icon: const Icon(Icons.folder_open_outlined),
                                 onPressed: () => _openPatient(context, data),
                               ),
-                                ElevatedButton(
-                                  onPressed: _closingWaitingIds.contains(inConsultation[index].id)
-                                      ? null
-                                      : () => _cloturerPatient(
-                                            context,
-                                            inConsultation[index],
-                                          ),
-                                  child: _closingWaitingIds.contains(inConsultation[index].id)
-                                      ? Row(
-                                          mainAxisAlignment: MainAxisAlignment.center,
-                                          children: const [
-                                            SizedBox(
-                                              height: 16,
-                                              width: 16,
-                                              child: CircularProgressIndicator(strokeWidth: 2),
-                                            ),
-                                            SizedBox(width: 8),
-                                            Text('Terminer...'),
-                                          ],
-                                        )
-                                      : const Text('Terminer'),
+                              // La cloture se fait au bout du parcours guide,
+                              // apres le recapitulatif : le medecin voit ce
+                              // qu'il a fait avant de terminer.
+                              FluentButton(
+                                label: 'Reprendre',
+                                icon: Icons.play_arrow_rounded,
+                                compact: true,
+                                onPressed: () => _ouvrirConsultation(
+                                  context,
+                                  inConsultation[index],
                                 ),
+                              ),
                             ],
                           ),
                         ),
@@ -1066,7 +1057,7 @@ if (doctor.isNotEmpty) 'Dr $doctor',
                                 if (assistant.isNotEmpty) assistant,
                                 if (seancesDone != null || seancesTotal != null)
                                   'Séance ${seancesDone ?? 0}/${seancesTotal ?? '-'}',
-                                'Arrivée createdStr',
+                                'Arrivée $createdStr',
 ]),
                             trailing: Wrap(
                               spacing: 8,
@@ -1077,7 +1068,10 @@ if (doctor.isNotEmpty) 'Dr $doctor',
                                   onPressed: () => _openPatient(context, data),
                                 ),
                                 OutlinedButton(
-                                  onPressed: () => _startConsultation(context, waiting[index]),
+                                  onPressed: () => _demarrerEtConsulter(
+                                    context,
+                                    waiting[index],
+                                  ),
                                   child: const Text('En consultation'),
                                 ),
                               ],
@@ -1117,7 +1111,7 @@ if (doctor.isNotEmpty) 'Dr $doctor',
                                 subtitle: MetaLine(items: [
 if (doctor.isNotEmpty) 'Dr $doctor',
                                     if (assistant.isNotEmpty) assistant,
-                                    'Reçu closedStr',
+                                    'Reçu $closedStr',
 ]),
                               );
                             },
@@ -1142,6 +1136,38 @@ if (doctor.isNotEmpty) 'Dr $doctor',
     );
   }
 
+  /// Ouvre la consultation guidee pour un patient deja en consultation.
+  Future<void> _ouvrirConsultation(
+    BuildContext context,
+    QueryDocumentSnapshot doc,
+  ) async {
+    final data = doc.data() as Map<String, dynamic>;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ConsultationPage(
+          parentUid: widget.parentUid,
+          profileId: widget.profileId,
+          waitingId: doc.id,
+          waitingData: data,
+        ),
+      ),
+    );
+  }
+
+  /// Marque le patient en consultation, puis enchaine sur le parcours.
+  ///
+  /// Les deux gestes etaient separes : le medecin cliquait « Demarrer », le
+  /// patient changeait de liste, et rien ne lui disait quoi faire ensuite.
+  Future<void> _demarrerEtConsulter(
+    BuildContext context,
+    QueryDocumentSnapshot doc,
+  ) async {
+    await _startConsultation(context, doc);
+    if (!context.mounted) return;
+    await _ouvrirConsultation(context, doc);
+  }
+
   Future<void> _startConsultation(
     BuildContext context,
     QueryDocumentSnapshot doc,
@@ -1161,33 +1187,6 @@ if (doctor.isNotEmpty) 'Dr $doctor',
     }
   }
 
-  Future<void> _cloturerPatient(
-    BuildContext context,
-    QueryDocumentSnapshot doc,
-  ) async {
-    if (_closingWaitingIds.contains(doc.id)) return;
-    setState(() => _closingWaitingIds.add(doc.id));
-    final data = doc.data() as Map<String, dynamic>;
-    try {
-      await _waitingService.closeEntryForAll(
-        parentUid: widget.parentUid,
-        profileId: widget.profileId,
-        waitingId: doc.id,
-        doctorId: (data['doctorId'] ?? '').toString(),
-        assistantId: (data['assistantId'] ?? '').toString(),
-        patientId: (data['patientId'] ?? '').toString(),
-      );
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Patient marque recu')),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _closingWaitingIds.remove(doc.id));
-      }
-    }
-  }
 
   void _openPatient(BuildContext context, Map<String, dynamic> data) {
     final patientId = (data['patientId'] ?? '').toString();

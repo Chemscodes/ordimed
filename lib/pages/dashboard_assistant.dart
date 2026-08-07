@@ -3004,7 +3004,7 @@ if (doctor.isNotEmpty) 'Dr $doctor',
                                   assistant,
                                 if (seancesDone != null || seancesTotal != null)
                                   'Séance ${seancesDone ?? 0}/${seancesTotal ?? '-'}',
-                                'Arrivée createdStr',
+                                'Arrivée $createdStr',
 ]),
                             trailing: Wrap(
                               spacing: 8,
@@ -3077,7 +3077,7 @@ if (doctor.isNotEmpty) 'Dr $doctor',
                                     if (seancesDone != null ||
                                         seancesTotal != null)
                                       'Séance ${seancesDone ?? 0}/${seancesTotal ?? '-'}',
-                                    'Reçu closedStr',
+                                    'Reçu $closedStr',
 ]),
                               );
                             },
