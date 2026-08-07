@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/format.dart' as fmt;
+import '../core/parcours.dart';
 import 'app_theme.dart';
 
 /// Affichage des informations.
@@ -142,110 +143,6 @@ class InfoGrid extends StatelessWidget {
   }
 }
 
-/// État d'une ligne de salle d'attente.
-enum PatientStatut {
-  attente,
-  consultation,
-  recu;
-
-  String get libelle {
-    switch (this) {
-      case PatientStatut.attente:
-        return 'En attente';
-      case PatientStatut.consultation:
-        return 'En consultation';
-      case PatientStatut.recu:
-        return 'Reçu';
-    }
-  }
-
-  IconData get icone {
-    switch (this) {
-      case PatientStatut.attente:
-        return Icons.hourglass_empty;
-      case PatientStatut.consultation:
-        return Icons.medical_services;
-      case PatientStatut.recu:
-        return Icons.check_circle;
-    }
-  }
-
-  /// Déduit l'état depuis un document de salle d'attente.
-  static PatientStatut fromWaiting(Map<String, dynamic> data) {
-    final statut = (data['status'] ?? '').toString().toLowerCase();
-    if (data['closedAt'] != null ||
-        statut == 'done' ||
-        statut == 'closed' ||
-        statut == 'cancelled' ||
-        statut == 'canceled') {
-      return PatientStatut.recu;
-    }
-    if (statut == 'in_consultation' || data['inConsultationAt'] != null) {
-      return PatientStatut.consultation;
-    }
-    return PatientStatut.attente;
-  }
-}
-
-/// Pastille d'état, colorée par sémantique.
-///
-/// La couleur ET la forme portent l'information : un utilisateur qui
-/// distingue mal les teintes lit quand même l'icône et le texte.
-class StatusChip extends StatelessWidget {
-  final PatientStatut statut;
-  final bool compact;
-
-  const StatusChip({super.key, required this.statut, this.compact = false});
-
-  Color _couleur(ColorScheme scheme) {
-    switch (statut) {
-      case PatientStatut.attente:
-        return scheme.onSurface.withValues(alpha: 0.55);
-      case PatientStatut.consultation:
-        return scheme.secondary;
-      case PatientStatut.recu:
-        return const Color(0xFF16A34A);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final couleur = _couleur(scheme);
-
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: compact ? 8 : 10,
-        vertical: compact ? 4 : 5,
-      ),
-      decoration: BoxDecoration(
-        color: Color.alphaBlend(
-          couleur.withValues(alpha: 0.14),
-          scheme.surface,
-        ),
-        borderRadius: BorderRadius.circular(AppTheme.rPill),
-        border: Border.all(color: couleur.withValues(alpha: 0.4)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(statut.icone, size: compact ? 12 : 13, color: couleur),
-          SizedBox(width: compact ? 4 : 6),
-          Text(
-            statut.libelle,
-            style: TextStyle(
-              fontSize: compact ? 10.5 : 11.5,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.2,
-              color: Color.lerp(couleur, scheme.onSurface, 0.2),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 /// Pastille d'initiales, teintée par le nom.
 ///
 /// Deux patients voisins dans une liste n'ont presque jamais la même
@@ -326,7 +223,7 @@ class PersonRow extends StatefulWidget {
   /// Métadonnées secondaires, affichées en ligne et séparées par des points.
   final List<String> meta;
 
-  final PatientStatut? statut;
+  final EtapeParcours? etape;
 
   /// Information de droite : heure d'arrivée, montant dû…
   final Widget? trailing;
@@ -339,7 +236,7 @@ class PersonRow extends StatefulWidget {
     required this.nom,
     this.prenom = '',
     this.meta = const [],
-    this.statut,
+    this.etape,
     this.trailing,
     this.actions = const [],
     this.onTap,
@@ -382,9 +279,9 @@ class _PersonRowState extends State<PersonRow> {
                       ),
                     ),
                   ),
-                  if (widget.statut != null) ...[
+                  if (widget.etape != null) ...[
                     const SizedBox(width: 10),
-                    StatusChip(statut: widget.statut!, compact: true),
+                    EtapeChip(etape: widget.etape!, compact: true),
                   ],
                 ],
               ),
@@ -456,12 +353,12 @@ class _PersonRowState extends State<PersonRow> {
 /// une ligne au lieu de quatre, l'œil balaie horizontalement au lieu de
 /// relire verticalement, et la carte cesse d'être trois fois trop haute.
 ///
-/// [statut] ajoute une pastille d'état en tête de ligne.
+/// [etape] ajoute une pastille d'état en tête de ligne.
 class MetaLine extends StatelessWidget {
   final List<String> items;
-  final PatientStatut? statut;
+  final EtapeParcours? etape;
 
-  const MetaLine({super.key, required this.items, this.statut});
+  const MetaLine({super.key, required this.items, this.etape});
 
   @override
   Widget build(BuildContext context) {
@@ -479,14 +376,14 @@ class MetaLine extends StatelessWidget {
       ),
     );
 
-    if (statut == null) return texte;
+    if (etape == null) return texte;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
         const SizedBox(height: 5),
-        StatusChip(statut: statut!, compact: true),
+        EtapeChip(etape: etape!, compact: true),
         if (visibles.isNotEmpty) ...[const SizedBox(height: 6), texte],
       ],
     );

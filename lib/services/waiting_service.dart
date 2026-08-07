@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../core/coerce.dart';
+import '../core/parcours.dart';
 
 class WaitingService {
   WaitingService._internal();
@@ -112,6 +113,8 @@ class WaitingService {
     required String patientPrenom,
     int? nombreSeances,
     int? seancesEffectuees,
+    String? rdvId,
+    String motif = '',
   }) async {
     if (await _hasOpenEntry(parentUid: parentUid, patientId: patientId)) {
       return false;
@@ -121,6 +124,14 @@ class WaitingService {
 
     final data = {
       'waitingId': waitingId,
+      // Rattache l'entrée au rendez-vous dont elle est issue, pour que la
+      // clôture de la consultation puisse marquer ce rendez-vous honoré.
+      // Sans ce lien, un rendez-vous restait « à venir » indéfiniment.
+      if (rdvId != null) 'rdvId': rdvId,
+      if (motif.isNotEmpty) 'motif': motif,
+      // Nouveau vocabulaire du parcours (core/parcours.dart). L'ancien
+      // `status` reste écrit : des requêtes et des vues le lisent encore.
+      'etape': EtapeParcours.arrive.code,
       'patientId': patientId,
       'patientNom': patientNom,
       'patientPrenom': patientPrenom,
@@ -181,6 +192,7 @@ class WaitingService {
     final base = _db.collection('users').doc(parentUid).collection('comptes');
     final payload = {
       'status': 'in_consultation',
+      'etape': EtapeParcours.enCours.code,
       'inConsultationAt': FieldValue.serverTimestamp(),
       'closedAt': null,
     };
@@ -225,6 +237,7 @@ class WaitingService {
     final payload = {
       'closedAt': FieldValue.serverTimestamp(),
       'status': 'done',
+      'etape': EtapeParcours.honore.code,
     };
     if (seancesEffectuees != null) {
       payload['seancesEffectuees'] = seancesEffectuees;

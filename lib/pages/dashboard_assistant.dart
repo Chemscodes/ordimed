@@ -11,6 +11,7 @@ import 'patient_details_page.dart';
 import 'profile_selector_page.dart';
 import 'stats_page.dart';
 import '../services/firestore_service.dart';
+import '../core/parcours.dart';
 import '../services/rendezvous_repository.dart';
 import '../services/soft_delete.dart';
 import '../services/stats_service.dart';
@@ -1945,6 +1946,96 @@ class _AssistantRdvTabState extends State<_AssistantRdvTab> {
     return minutes >= 0 && minutes <= 60;
   }
 
+  /// Rendez-vous en cours de mise en salle, pour ne pas placer deux fois.
+  final Set<String> _enCoursArrivee = <String>{};
+
+  /// Le patient n'est pas venu.
+  ///
+  /// Une etape a part entiere, pas une absence de donnee : un rendez-vous
+  /// non honore laisse un creneau vide, et savoir qui ne vient pas est une
+  /// information de gestion que le cabinet n'avait aucun moyen de retenir.
+  Future<void> _noterAbsent(
+    BuildContext context,
+    String rdvId,
+    Map<String, dynamic> rdv,
+  ) async {
+    final confirme = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Noter le patient absent ?'),
+        content: Text(
+          '${rdv['patientNom'] ?? 'Ce patient'} sera marque absent pour ce '
+          'rendez-vous. Le creneau reste dans l\'historique.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Retour'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Noter absent'),
+          ),
+        ],
+      ),
+    );
+    if (confirme != true) return;
+
+    try {
+      await RendezVousRepository().changerEtape(
+        parentUid: widget.parentUid,
+        rdvId: rdvId,
+        doctorId: (rdv['doctorId'] ?? '').toString(),
+        assistantId: (rdv['assistantId'] ?? widget.profileId).toString(),
+        etape: EtapeParcours.absent,
+      );
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Echec de l\'enregistrement')),
+      );
+    }
+  }
+
+  /// Le patient se presente a l'accueil.
+  ///
+  /// C'etait le trou du parcours : l'assistant voyait le rendez-vous ici et
+  /// devait aller ressaisir le patient dans la salle d'attente, alors que le
+  /// rendez-vous portait deja son nom, son medecin et son motif.
+  Future<void> _marquerArrive(
+    BuildContext context,
+    String rdvId,
+    Map<String, dynamic> rdv,
+  ) async {
+    if (_enCoursArrivee.contains(rdvId)) return;
+    setState(() => _enCoursArrivee.add(rdvId));
+    try {
+      final place = await RendezVousRepository().marquerArrive(
+        parentUid: widget.parentUid,
+        rdvId: rdvId,
+        rdv: rdv,
+        profileId: widget.profileId,
+      );
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            place
+                ? 'Patient place en salle d\'attente'
+                : 'Ce patient est deja dans la file',
+          ),
+        ),
+      );
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Echec de la mise en salle')),
+      );
+    } finally {
+      if (mounted) setState(() => _enCoursArrivee.remove(rdvId));
+    }
+  }
+
   String _formatWhatsappNumber(String raw) {
     return raw.replaceAll(RegExp(r'\D'), '');
   }
@@ -2567,6 +2658,7 @@ class _AssistantRdvTabState extends State<_AssistantRdvTab> {
                   final doctor = (d['doctorName'] ?? d['doctorId'] ?? '')
                       .toString();
                   final motif = (d['motif'] ?? '').toString();
+                  final etape = EtapeParcours.fromRendezVous(d);
                   final formatted = dt != null
                       ? '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}'
                       : 'Date a definir';
@@ -2628,11 +2720,20 @@ class _AssistantRdvTabState extends State<_AssistantRdvTab> {
                               ),
                             ),
                             const SizedBox(height: 4),
-                            if (isPast)
+                            // Ou en est ce rendez-vous. Il n'y avait qu'un
+                            // « Passe » deduit de l'heure : un rendez-vous
+                            // honore, un patient absent et un patient encore
+                            // en salle s'affichaient tous pareil.
+                            EtapeChip(etape: etape, compact: true),
+                            // « Passe » ne se justifie que si l'heure est
+                            // depassee ET que personne n'a rien fait.
+                            if (isPast && etape.estOuverte) ...[
+                              const SizedBox(height: 4),
                               const Chip(
-                                label: Text('Passe'),
+                                label: Text('En retard'),
                                 backgroundColor: Color(0xFFFFE4E6),
                               ),
+                            ],
                             if (reminderSent) ...[
                               const SizedBox(height: 4),
                               const Chip(
@@ -2641,9 +2742,52 @@ class _AssistantRdvTabState extends State<_AssistantRdvTab> {
                               ),
                             ],
                             const SizedBox(height: 6),
+                            // L'action du jour, mise en avant : c'est celle
+                            // que l'assistant fait des dizaines de fois.
+                            if (etape == EtapeParcours.planifie ||
+                                etape == EtapeParcours.confirme)
+                              FluentButton(
+                                label: _enCoursArrivee.contains(rdvId)
+                                    ? 'Placement...'
+                                    : 'Patient arrive',
+                                icon: Icons.login_rounded,
+                                compact: true,
+                                onPressed: _enCoursArrivee.contains(rdvId)
+                                    ? null
+                                    : () => _marquerArrive(context, rdvId, d),
+                              ),
+                            if (etape == EtapeParcours.arrive ||
+                                etape == EtapeParcours.enCours)
+                              Text(
+                                'En salle',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: etape.couleur(scheme),
+                                ),
+                              ),
+                            const SizedBox(height: 6),
                             Wrap(
                               spacing: 4,
                               children: [
+                                if (etape.suivantes.contains(
+                                  EtapeParcours.absent,
+                                ))
+                                  IconButton(
+                                    tooltip: 'Noter absent',
+                                    icon: Icon(
+                                      Icons.person_off_outlined,
+                                      size: 18,
+                                      color: EtapeParcours.absent.couleur(
+                                        scheme,
+                                      ),
+                                    ),
+                                    onPressed: () => _noterAbsent(
+                                      context,
+                                      rdvId,
+                                      d,
+                                    ),
+                                  ),
                                 IconButton(
                                   tooltip: reminderTooltip,
                                   icon: Icon(

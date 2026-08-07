@@ -20,6 +20,7 @@ import '../core/format.dart' as fmt;
 import '../core/validate.dart' as v;
 import '../ui/app_field.dart';
 import '../widgets/computed_fields.dart';
+import '../widgets/historique_seances.dart';
 
 /// Rend le contenu d'un dialogue defilable et borne sa hauteur.
 ///
@@ -286,6 +287,18 @@ class PatientDetailsPage extends StatelessWidget {
                       ),
                     ),
                   ],
+                  const SizedBox(height: 12),
+                  // Les documents ci-dessous melangent ordonnances, bilans et
+                  // consultations. L'historique isole le fil des seances, qui
+                  // est ce qu'on relit avant de recevoir un patient.
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: CarteHistoriqueSeances(
+                      parentUid: parentUid,
+                      profileId: ownerProfileId,
+                      patientId: patientId,
+                    ),
+                  ),
                   const SizedBox(height: 12),
                   StreamBuilder<QuerySnapshot>(
                     stream: FirestoreService().patientForms(

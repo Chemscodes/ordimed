@@ -6,6 +6,7 @@ import '../core/clinical.dart';
 import '../core/coerce.dart';
 import '../core/format.dart' as fmt;
 import '../core/validate.dart' as v;
+import '../services/rendezvous_repository.dart';
 import '../services/waiting_service.dart';
 import '../ui/app_field.dart';
 import '../ui/app_theme.dart';
@@ -13,6 +14,7 @@ import '../ui/fluent_button.dart';
 import '../ui/fluent_card.dart';
 import '../ui/info_display.dart';
 import '../widgets/computed_fields.dart';
+import '../widgets/historique_seances.dart';
 
 /// Consultation guidée.
 ///
@@ -170,8 +172,17 @@ class _ConsultationPageState extends State<ConsultationPage> {
       await _patientRef.set(maj, SetOptions(merge: true));
 
       // Et une trace horodatée dans les documents.
+      //
+      // Les mesures y sont écrites deux fois, et c'est voulu : en champs
+      // typés pour que l'historique les relise sans deviner, et en texte
+      // pour les vues qui affichent `contenu` tel quel. Reparser le texte
+      // aurait suffi jusqu'au jour où quelqu'un change une virgule.
       await _patientRef.collection('forms').add({
         'type': 'Consultation',
+        if (poids != null) 'poids': poids,
+        if (taille != null) 'taille': taille,
+        if (_imcCtrl.text.isNotEmpty) 'imc': _imcCtrl.text,
+        if (notes.isNotEmpty) 'notes': notes,
         'contenu': [
           if (poids != null) 'Poids : ${poids.toStringAsFixed(1)} kg',
           if (taille != null) 'Taille : ${taille.toStringAsFixed(0)} cm',
@@ -233,6 +244,15 @@ class _ConsultationPageState extends State<ConsultationPage> {
           seancesEffectuees: faites,
         );
       }
+
+      // Referme le rendez-vous d'où vient la visite. Sans ce retour, un
+      // rendez-vous honoré restait affiché « à venir » indéfiniment.
+      await RendezVousRepository().honorerDepuisVisite(
+        parentUid: widget.parentUid,
+        rdvId: asTextOrNull(widget.waitingData['rdvId']),
+        doctorId: doctorId,
+        assistantId: assistantId,
+      );
 
       if (!mounted) return;
       Navigator.pop(context);
@@ -460,6 +480,17 @@ class _ConsultationPageState extends State<ConsultationPage> {
                   ],
                 );
               },
+            ),
+            const SizedBox(height: 12),
+            // « Qu'est-ce qui s'est passé la dernière fois ? » est la
+            // première question du médecin qui s'assoit. Elle n'avait pas
+            // de réponse : il fallait fouiller les documents du dossier.
+            CarteHistoriqueSeances(
+              parentUid: widget.parentUid,
+              profileId: widget.profileId,
+              patientId: _patientId,
+              limite: 3,
+              compact: true,
             ),
           ],
         );

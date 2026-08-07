@@ -92,7 +92,7 @@ class _AppointmentsPageState extends State<AppointmentsPage> {
                             d['datetime'] is Timestamp ? (d['datetime'] as Timestamp).toDate() : null;
                         final formatted = dt != null
                             ? '${dt.day}/${dt.month}/${dt.year} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}'
-                            : 'Date Çÿ dÇ¸finir';
+                            : 'Date à définir';
 
                         return TweenAnimationBuilder<double>(
                           duration: Duration(milliseconds: 220 + (i * 30)),
@@ -112,7 +112,7 @@ class _AppointmentsPageState extends State<AppointmentsPage> {
                             child: ListTile(
                               leading: const Icon(Icons.event_available, color: Color(0xFF2563EB)),
                               title: Text(patient),
-                              subtitle: Text('MÇ¸decin: $medecin\n$formatted'),
+                              subtitle: Text('Médecin : $medecin\n$formatted'),
                               trailing: Text(motif),
                             ),
                           ),

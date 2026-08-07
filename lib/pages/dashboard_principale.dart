@@ -13,6 +13,7 @@ import '../services/firestore_service.dart';
 import '../services/stats_service.dart';
 import '../widgets/daily_versements_card.dart';
 import '../core/coerce.dart';
+import '../core/parcours.dart';
 import '../ui/info_display.dart';
 
 int? _toInt(dynamic v) => asIntOrNull(v);
@@ -359,13 +360,13 @@ class _RendezVousTabState extends State<_RendezVousTab> {
                   _Compteur(
                     label: 'En consultation',
                     valeur: inConsultation.length,
-                    statut: PatientStatut.consultation,
+                    etape: EtapeParcours.enCours,
                   ),
                   const SizedBox(width: 10),
                   _Compteur(
                     label: "Salle d'attente",
                     valeur: waiting.length,
-                    statut: PatientStatut.attente,
+                    etape: EtapeParcours.arrive,
                   ),
                   const Spacer(),
                   FluentButton(
@@ -423,7 +424,7 @@ class _RendezVousTabState extends State<_RendezVousTab> {
                         child: PersonRow(
                           nom: patient.toString(),
                           prenom: (data['patientPrenom'] ?? '').toString(),
-                          statut: PatientStatut.consultation,
+                          etape: EtapeParcours.enCours,
                           meta: [
                             if (doctor.isNotEmpty) 'Dr $doctor',
                             if (assistant.isNotEmpty) assistant,
@@ -482,7 +483,7 @@ class _RendezVousTabState extends State<_RendezVousTab> {
                           child: PersonRow(
                             nom: patient.toString(),
                             prenom: (data['patientPrenom'] ?? '').toString(),
-                            statut: PatientStatut.attente,
+                            etape: EtapeParcours.arrive,
                             meta: [
                               if (doctor.isNotEmpty) 'Dr $doctor',
                               if (assistant.isNotEmpty) assistant,
@@ -782,18 +783,18 @@ class _VersementCardsForDayState extends State<_VersementCardsForDay> {
 class _Compteur extends StatelessWidget {
   final String label;
   final int valeur;
-  final PatientStatut statut;
+  final EtapeParcours etape;
 
   const _Compteur({
     required this.label,
     required this.valeur,
-    required this.statut,
+    required this.etape,
   });
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final couleur = statut == PatientStatut.consultation
+    final couleur = etape == EtapeParcours.enCours
         ? scheme.secondary
         : scheme.primary;
 
@@ -808,7 +809,7 @@ class _Compteur extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(statut.icone, size: 15, color: couleur),
+          Icon(etape.icone, size: 15, color: couleur),
           const SizedBox(width: 8),
           Text(
             '$valeur',
