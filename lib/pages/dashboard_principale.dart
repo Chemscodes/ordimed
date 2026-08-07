@@ -14,6 +14,7 @@ import '../services/stats_service.dart';
 import '../widgets/daily_versements_card.dart';
 import '../core/coerce.dart';
 import '../core/parcours.dart';
+import 'sauvegarde_page.dart';
 import '../ui/info_display.dart';
 
 int? _toInt(dynamic v) => asIntOrNull(v);
@@ -89,6 +90,19 @@ class _DashboardPrincipalState extends State<DashboardPrincipal> {
             context,
             MaterialPageRoute(
               builder: (_) => StatsPage(parentUid: widget.parentUid, title: 'Stats du cabinet'),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        // Firestore n'a pas de corbeille : c'etait le seul degat que l'app
+        // pouvait causer sans retour possible.
+        FluentButton(
+          label: 'Sauvegardes',
+          icon: Icons.shield_outlined,
+          onPressed: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => SauvegardePage(parentUid: widget.parentUid),
             ),
           ),
         ),
