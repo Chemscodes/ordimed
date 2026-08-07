@@ -1067,12 +1067,16 @@ if (doctor.isNotEmpty) 'Dr $doctor',
                                   icon: const Icon(Icons.folder_open),
                                   onPressed: () => _openPatient(context, data),
                                 ),
-                                OutlinedButton(
+                                // « En consultation » nommait l'etat d'arrivee,
+                                // pas le geste. Un bouton dit ce qu'il fait.
+                                FluentButton(
+                                  label: 'Consulter',
+                                  icon: Icons.play_arrow_rounded,
+                                  compact: true,
                                   onPressed: () => _demarrerEtConsulter(
                                     context,
                                     waiting[index],
                                   ),
-                                  child: const Text('En consultation'),
                                 ),
                               ],
                             ),

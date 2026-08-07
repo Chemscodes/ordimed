@@ -28,8 +28,13 @@ class ConsultationPage extends StatefulWidget {
   final String parentUid;
   final String profileId;
 
-  /// Document de salle d'attente : porte patientId, noms et identifiants.
-  final String waitingId;
+  /// Entrée de salle d'attente à clôturer en fin de parcours.
+  ///
+  /// Nul quand la consultation est lancée depuis le dossier patient : le
+  /// patient n'est alors passé par aucune file, il n'y a rien à en sortir.
+  final String? waitingId;
+
+  /// Porte patientId, noms et identifiants de profils.
   final Map<String, dynamic> waitingData;
 
   const ConsultationPage({
@@ -39,6 +44,25 @@ class ConsultationPage extends StatefulWidget {
     required this.waitingId,
     required this.waitingData,
   });
+
+  /// Consultation lancée directement depuis un dossier patient.
+  ///
+  /// La salle d'attente n'est pas le seul chemin vers une consultation : un
+  /// patient peut se présenter sans passer par l'assistant. Le dossier porte
+  /// déjà les mêmes champs que l'entrée de file, on les réutilise tels quels.
+  ConsultationPage.depuisDossier({
+    super.key,
+    required this.parentUid,
+    required this.profileId,
+    required String patientId,
+    required Map<String, dynamic> patient,
+  }) : waitingId = null,
+       waitingData = {
+         ...patient,
+         'patientId': patientId,
+         'patientNom': patient['nom'],
+         'patientPrenom': patient['prenom'],
+       };
 
   @override
   State<ConsultationPage> createState() => _ConsultationPageState();
@@ -195,15 +219,20 @@ class _ConsultationPageState extends State<ConsultationPage> {
       }
       await batch.commit();
 
-      await WaitingService().closeEntryForAll(
-        parentUid: widget.parentUid,
-        profileId: widget.profileId,
-        waitingId: widget.waitingId,
-        doctorId: doctorId,
-        assistantId: assistantId,
-        patientId: _patientId,
-        seancesEffectuees: faites,
-      );
+      // Rien à sortir de la file quand la consultation part du dossier : la
+      // séance est décomptée ci-dessus, ce qui suffit à la clôture.
+      final waitingId = widget.waitingId;
+      if (waitingId != null) {
+        await WaitingService().closeEntryForAll(
+          parentUid: widget.parentUid,
+          profileId: widget.profileId,
+          waitingId: waitingId,
+          doctorId: doctorId,
+          assistantId: assistantId,
+          patientId: _patientId,
+          seancesEffectuees: faites,
+        );
+      }
 
       if (!mounted) return;
       Navigator.pop(context);

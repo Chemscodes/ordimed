@@ -11,6 +11,8 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/firestore_service.dart';
+import '../ui/fluent_button.dart';
+import 'consultation_page.dart';
 import '../core/coerce.dart';
 import '../ui/info_display.dart';
 import '../core/clinical.dart';
@@ -256,6 +258,34 @@ class PatientDetailsPage extends StatelessWidget {
                     seancesDone: seancesDone,
                     createdAt: patientData['createdAt'],
                   ),
+                  // La salle d'attente n'est pas le seul chemin vers une
+                  // consultation, et c'est un chemin que le medecin ne
+                  // controle pas : il depend de l'assistant. Depuis le
+                  // dossier, il lance le parcours guide lui-meme.
+                  if (canAddDoctorForm) ...[
+                    const SizedBox(height: 12),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: FluentButton(
+                          label: 'Demarrer la consultation guidee',
+                          icon: Icons.play_circle_outline,
+                          onPressed: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => ConsultationPage.depuisDossier(
+                                parentUid: parentUid,
+                                profileId: ownerProfileId,
+                                patientId: patientId,
+                                patient: patientData,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 12),
                   StreamBuilder<QuerySnapshot>(
                     stream: FirestoreService().patientForms(
