@@ -14,6 +14,7 @@ import '../services/firestore_service.dart';
 import '../ui/fluent_button.dart';
 import 'consultation_page.dart';
 import '../core/coerce.dart';
+import '../core/versements.dart';
 import '../ui/info_display.dart';
 import '../core/clinical.dart';
 import '../core/format.dart' as fmt;
@@ -528,9 +529,48 @@ class PatientDetailsPage extends StatelessWidget {
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 16,
                                 ),
-                                child: _buildVersementsCard(
+                                // Le tableau du document ne garde plus que
+                                // les versements recents : la sous-collection
+                                // porte l'historique complet. Sans cette
+                                // lecture, les anciens disparaitraient de
+                                // l'ecran alors qu'ils existent toujours.
+                                child: StreamBuilder<QuerySnapshot>(
+                                  stream: FirebaseFirestore.instance
+                                      .collection('users')
+                                      .doc(parentUid)
+                                      .collection('comptes')
+                                      .doc(ownerProfileId)
+                                      .collection('patients')
+                                      .doc(patientId)
+                                      .collection('versements')
+                                      .snapshots(),
+                                  builder: (context, versSnap) {
+                                    final sous = (versSnap.data?.docs ?? [])
+                                        .map(
+                                          (d) => Versement.fromMap(
+                                            d.data() as Map<String, dynamic>,
+                                            id: d.id,
+                                          ),
+                                        )
+                                        .toList();
+                                    final tous = fusionnerVersements(
+                                      sousCollection: sous,
+                                      tableauHerite:
+                                          patientData['versements'],
+                                    );
+                                    return _buildVersementsCard(
                                   context: context,
-                                  versements: versements,
+                                  versements: tous
+                                      .map(
+                                        (v) => <String, dynamic>{
+                                          'montant': v.montant,
+                                          if (v.date != null)
+                                            'createdAt': v.date,
+                                          'auteurProfileId':
+                                              v.auteurProfileId,
+                                        },
+                                      )
+                                      .toList(),
                                   totalVersements: totalVersements ?? 0,
                                   ownerProfileId: ownerProfileId,
                                   doctorId: doctorId,
@@ -538,6 +578,8 @@ class PatientDetailsPage extends StatelessWidget {
                                   doctorLabel: doctorLabel,
                                   assistantLabel: assistantLabel,
                                   ownerLabel: ownerLabel,
+                                );
+                                  },
                                 ),
                               ),
                               const SizedBox(height: 8),

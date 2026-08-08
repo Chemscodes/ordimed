@@ -13,6 +13,7 @@ import 'stats_page.dart';
 import '../services/firestore_service.dart';
 import '../core/creneaux.dart';
 import '../core/parcours.dart';
+import '../core/versements.dart';
 import '../services/recu_service.dart';
 import '../services/rendezvous_repository.dart';
 import 'choix_creneau_page.dart';
@@ -3502,18 +3503,41 @@ if (doctor.isNotEmpty) 'Dr $doctor',
           ? base.doc(doctorId).collection('patients').doc(patientId)
           : null;
 
+      // arrayUnion faisait grossir le tableau sans limite. Un document
+      // Firestore plafonne a 1 Mo : vers quelques milliers de versements
+      // l'ecriture aurait ete rejetee, en silence — le patient reparti,
+      // l'argent nulle part.
+      //
+      // La sous-collection garde tout. Le tableau devient un cache borne
+      // aux plus recents, parce que le graphique du tableau de bord agrege
+      // les versements de tous les patients depuis leurs seuls documents :
+      // le supprimer imposerait une requete par patient.
+      final cache = versementsBornes(patientData['versements'], newEntry);
+      final versementId = FirebaseFirestore.instance
+          .collection('tmp')
+          .doc()
+          .id;
+
       final batch = FirebaseFirestore.instance.batch();
       batch.set(patientRef, {
         'totalVersements': newTotal,
-        'versements': FieldValue.arrayUnion([newEntry]),
+        'versements': cache,
         'parentUid': widget.parentUid,
       }, SetOptions(merge: true));
+      batch.set(
+        patientRef.collection('versements').doc(versementId),
+        {...newEntry, 'parentUid': widget.parentUid},
+      );
       if (doctorRef != null) {
         batch.set(doctorRef, {
           'totalVersements': newTotal,
-          'versements': FieldValue.arrayUnion([newEntry]),
+          'versements': cache,
           'parentUid': widget.parentUid,
         }, SetOptions(merge: true));
+        batch.set(
+          doctorRef.collection('versements').doc(versementId),
+          {...newEntry, 'parentUid': widget.parentUid},
+        );
       }
       await batch.commit();
       await StatsService().addVersement(
