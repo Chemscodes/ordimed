@@ -1,0 +1,65 @@
+# Ordimed — pile locale
+#
+# `docker compose up` suffit. Mongo se lance, s'initie en replica set, le
+# backend attend qu'il soit prêt puis démarre.
+#
+# Pourquoi un replica set pour une base locale : l'app fait 21 écritures
+# atomiques (créer un patient le pose chez le médecin ET chez l'assistant,
+# clôturer une consultation décompte la séance ET sort le patient de la
+# file). MongoDB n'autorise les transactions que sur un replica set. Un
+# `mongo:7` seul les refuse, et l'échec se produirait en production, à
+# moitié écrit.
+
+services:
+  mongo:
+    image: mongo:7
+    container_name: ordimed-mongo
+    restart: unless-stopped
+    command: ["--replSet", "rs0", "--bind_ip_all"]
+    ports:
+      # Exposé pour que Compass ou mongosh puissent regarder la base depuis
+      # le poste. Le backend, lui, passe par le réseau interne.
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      # Initie le replica set au premier démarrage, puis vérifie qu'il
+      # répond. `try/catch` parce qu'un rs.initiate() sur un set déjà
+      # initié lève une erreur — ce n'est pas un échec.
+      test: >
+        mongosh --quiet --eval "
+          try { rs.status().ok }
+          catch (e) { rs.initiate({_id:'rs0',members:[{_id:0,host:'mongo:27017'}]}).ok }
+        "
+      interval: 5s
+      timeout: 10s
+      retries: 20
+      start_period: 10s
+
+  backend:
+    build: ./backend
+    container_name: ordimed-backend
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      MONGO_URL: mongodb://mongo:27017/ordimed?replicaSet=rs0
+      # Défaut de développement. En vrai déploiement, mets-le dans un .env
+      # non versionné : quiconque connaît cette chaîne peut fabriquer un
+      # jeton valide pour n'importe quel cabinet.
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-a-changer}
+      JWT_EXPIRES: 30d
+    ports:
+      - "4000:4000"
+    volumes:
+      # Les fichiers survivent à la reconstruction de l'image.
+      - ./backend/uploads:/app/uploads
+      # Les sauvegardes JSON de l'app, pour pouvoir les importer depuis le
+      # conteneur sans les copier à la main.
+      - ./backend/import:/app/import
+
+volumes:
+  mongo-data:
