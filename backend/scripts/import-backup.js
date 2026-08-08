@@ -68,34 +68,24 @@ const STATUS_POUR = {
   annule: 'cancelled',
 };
 
-async function main() {
-  const fichier = process.argv[2];
-  const motDePasse = process.argv[3];
+/**
+ * Importe une sauvegarde déjà décodée.
+ *
+ * Séparé de la ligne de commande pour être testable : vérifier que les
+ * copies Firestore sont bien dédoublonnées et que les versements ne
+ * comptent pas double n'a pas à passer par un fichier ni par `process.exit`.
+ *
+ * `silencieux` coupe la sortie console pendant les tests.
+ */
+async function importer(brut, { motDePasse, silencieux = false } = {}) {
+  const dire = silencieux ? () => {} : console.log;
 
-  if (!fichier) {
-    console.error(
-      'Usage : node scripts/import-backup.js <sauvegarde.json> [motDePasse]'
-    );
-    process.exit(1);
-  }
-
-  const chemin = path.resolve(fichier);
-  if (!fs.existsSync(chemin)) {
-    console.error(`Fichier introuvable : ${chemin}`);
-    process.exit(1);
-  }
-
-  const brut = JSON.parse(fs.readFileSync(chemin, 'utf8'));
   if (!brut || typeof brut !== 'object' || !brut.comptes) {
-    console.error(
+    throw new Error(
       'Ce fichier ne ressemble pas à une sauvegarde Ordimed ' +
         '(clé « comptes » absente).'
     );
-    process.exit(1);
   }
-
-  await mongoose.connect(MONGO_URL, { serverSelectionTimeoutMS: 15000 });
-  console.log(`MongoDB connecté — import de ${path.basename(chemin)}`);
 
   const compteur = {
     profils: 0,
@@ -116,12 +106,13 @@ async function main() {
   let cabinet = await Cabinet.findOne({ email });
   if (!cabinet) {
     if (!motDePasse) {
-      console.error(
-        `\nLe cabinet « ${email} » n'existe pas encore.\n` +
-          'Donne un mot de passe en second argument : Firebase gardait le ' +
-          'mot de passe de son côté, la sauvegarde ne le contient pas.\n'
+      // Une erreur plutôt qu'un `process.exit` : la fonction doit pouvoir
+      // être appelée depuis un test sans tuer le processus.
+      throw new Error(
+        `Le cabinet « ${email} » n'existe pas encore. Donne un mot de passe ` +
+          'en second argument : Firebase gardait le mot de passe de son ' +
+          'côté, la sauvegarde ne le contient pas.'
       );
-      process.exit(1);
     }
     cabinet = await Cabinet.create({
       email,
@@ -129,9 +120,9 @@ async function main() {
       createdAt: c.asDateOrNull(racine.createdAt) || new Date(),
       horaires: racine.horaires || undefined,
     });
-    console.log(`Cabinet créé : ${email}`);
+    dire(`Cabinet créé : ${email}`);
   } else {
-    console.log(`Cabinet existant réutilisé : ${email}`);
+    dire(`Cabinet existant réutilisé : ${email}`);
   }
 
   /**
@@ -491,19 +482,49 @@ async function main() {
     }
   }
 
-  console.log('\nImport terminé');
+  dire('\nImport terminé');
   for (const [k, v] of Object.entries(compteur)) {
-    console.log(`  ${k.padEnd(16)} ${v}`);
+    dire(`  ${k.padEnd(16)} ${v}`);
   }
-  console.log(
+  dire(
     '\n« ignores » compte les copies dédoublonnées et les documents ' +
       'inexploitables (rendez-vous sans date, patient introuvable).'
   );
 
+  return { cabinet, compteur };
+}
+
+/** L'enveloppe ligne de commande. */
+async function main() {
+  const fichier = process.argv[2];
+  const motDePasse = process.argv[3];
+
+  if (!fichier) {
+    console.error(
+      'Usage : node scripts/import-backup.js <sauvegarde.json> [motDePasse]'
+    );
+    process.exit(1);
+  }
+
+  const chemin = path.resolve(fichier);
+  if (!fs.existsSync(chemin)) {
+    console.error(`Fichier introuvable : ${chemin}`);
+    process.exit(1);
+  }
+
+  await mongoose.connect(MONGO_URL, { serverSelectionTimeoutMS: 15000 });
+  console.log(`MongoDB connecté — import de ${path.basename(chemin)}`);
+
+  await importer(JSON.parse(fs.readFileSync(chemin, 'utf8')), { motDePasse });
   await mongoose.disconnect();
 }
 
-main().catch((e) => {
-  console.error('Import interrompu :', e.message);
-  process.exit(1);
-});
+module.exports = { importer };
+
+// Lancé en ligne de commande, pas requis par un test.
+if (require.main === module) {
+  main().catch((e) => {
+    console.error('Import interrompu :', e.message);
+    process.exit(1);
+  });
+}

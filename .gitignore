@@ -1,78 +1,66 @@
+
+!backend/uploads/.gitkeep
+# --- Ajouts Ordimed ---
+# A retelecharger depuis https://wixtoolset.org si besoin de l'installateur.
+# Android Studio will place build artifacts here
+# Chemins machine-specifiques et caches de build Android
+# Clips de fond de la page de presentation (~26 Mo de banque d'images tierce).
+# Dossiers generes par Flutter pour chaque plateforme (245 Mo sur Windows).
+# Flutter/Dart/Pub related
+# IntelliJ related
 # Miscellaneous
+# Obfuscation related
+# Outillage WiX vendorise (134 Mo de binaires tiers).
+# Recrees automatiquement par `flutter pub get` / `flutter build`.
+# Sorties de l'installateur
+# Symbolication related
+# The .vscode folder contains launch configuration and tasks you configure in
+# VS Code which you may wish to be included in version control, so this line
+# Version autonome de la page : regeneree par presentation/build-standalone.ps1
+# Voir presentation/README.md pour les retelecharger.
+# is commented out by default.
+#.vscode/
+**/Flutter/ephemeral/
+**/build/
+**/doc/api/
+**/flutter/ephemeral/
+**/ios/Flutter/.last_build_id
 *.class
+*.iml
+*.ipr
+*.iws
 *.log
+*.msi
+*.msix
 *.pyc
 *.swp
 .DS_Store
 .atom/
 .build/
 .buildlog/
-.history
-.svn/
-.swiftpm/
-migrate_working_dir/
-
-# IntelliJ related
-*.iml
-*.ipr
-*.iws
-.idea/
-
-# The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
-#.vscode/
-
-# Flutter/Dart/Pub related
-**/doc/api/
-**/ios/Flutter/.last_build_id
 .dart_tool/
 .flutter-plugins
 .flutter-plugins-dependencies
+.history
+.idea/
 .pub-cache/
 .pub/
-/build/
-
-# Symbolication related
-app.*.symbols
-
-# Obfuscation related
-app.*.map.json
-
-# Android Studio will place build artifacts here
+.svn/
+.swiftpm/
+/android/.gradle/
+/android/app/.cxx/
 /android/app/debug
 /android/app/profile
 /android/app/release
-
-# --- Ajouts Ordimed ---
-
-# Dossiers generes par Flutter pour chaque plateforme (245 Mo sur Windows).
-# Recrees automatiquement par `flutter pub get` / `flutter build`.
-**/flutter/ephemeral/
-**/Flutter/ephemeral/
-
-# Chemins machine-specifiques et caches de build Android
 /android/local.properties
-/android/.gradle/
-/android/app/.cxx/
-**/build/
-
-# Outillage WiX vendorise (134 Mo de binaires tiers).
-# A retelecharger depuis https://wixtoolset.org si besoin de l'installateur.
-/tools/
-
-# Sorties de l'installateur
-*.msi
-*.msix
-
-# Version autonome de la page : regeneree par presentation/build-standalone.ps1
-/presentation/index.html
-
-# Clips de fond de la page de presentation (~26 Mo de banque d'images tierce).
-# Voir presentation/README.md pour les retelecharger.
+/build/
 /presentation/*.mp4
-node_modules/
+/presentation/index.html
+/tools/
+app.*.map.json
+app.*.symbols
+backend/.env
 backend/node_modules/
 backend/uploads/*
-!backend/uploads/.gitkeep
-backend/.env
+migrate_working_dir/
+node_modules/
