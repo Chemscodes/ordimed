@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+
+import '../services/api_client.dart';
+import '../services/api_service.dart';
 import '../ui/fluent_card.dart';
 import '../ui/fluent_button.dart';
 
@@ -27,20 +29,25 @@ class _AddProfilePageState extends State<AddProfilePage> {
     }
     setState(() => _isSubmitting = true);
     try {
-      final ref =
-          FirebaseFirestore.instance.collection('users').doc(widget.uid).collection('comptes');
-      await ref.add({
-        'name': nameCtrl.text.trim(),
-        'role': role,
-        'pin': pinCtrl.text.trim(),
-        'createdAt': FieldValue.serverTimestamp(),
-      });
+      // Le PIN est hache par le backend. Il n'est plus jamais stocke en
+      // clair ni compare cote client.
+      await ApiService.instance.creerProfil(
+        name: nameCtrl.text.trim(),
+        role: role,
+        pin: pinCtrl.text.trim(),
+      );
       if (!mounted) return;
       Navigator.pop(context);
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Erreur lors de la creation du profil')),
+        SnackBar(
+          content: Text(
+            e is ApiException
+                ? e.message
+                : 'Erreur lors de la creation du profil',
+          ),
+        ),
       );
     } finally {
       if (mounted) {

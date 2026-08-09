@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+
+import 'api_service.dart';
 
 /// Suivi des erreurs en production.
 ///
@@ -12,7 +12,7 @@ import 'package:flutter/foundation.dart';
 /// Deux destinations, volontairement :
 ///  - un fichier local, qui fonctionne toujours (hors ligne, non connecte,
 ///    plantage au demarrage) et que l'on peut demander par e-mail ;
-///  - une collection Firestore `users/{uid}/error_logs`, consultable a
+///  - la collection `error_logs` du backend, consultable a
 ///    distance depuis la console Firebase.
 ///
 /// Confidentialite : le message et la pile sont tronques, et aucune donnee
@@ -133,27 +133,23 @@ class ErrorReporter {
     Map<String, dynamic>? context,
   ) async {
     try {
-      // Sans utilisateur connecte, les regles de securite refuseraient
-      // l'ecriture : le journal local fait seul office de trace.
-      final uid = FirebaseAuth.instance.currentUser?.uid;
-      if (uid == null) return;
-
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(uid)
-          .collection('error_logs')
-          .add({
+      // La route accepte les signalements sans jeton : une erreur peut
+      // survenir avant toute connexion, et c'est souvent celle-la qui
+      // interesse le plus. Firestore, lui, les refusait faute de regle.
+      await ApiService.instance
+          .signalerErreur({
             'message': message,
             'stack': stackText,
             'origin': origin,
             'appVersion': appVersion,
             'platform': Platform.operatingSystem,
             'osVersion': Platform.operatingSystemVersion,
-            'createdAt': FieldValue.serverTimestamp(),
-            if (context != null) 'context': context,
+            if (context != null) 'context': context.toString(),
           })
           .timeout(const Duration(seconds: 10));
-    } catch (_) {}
+    } catch (_) {
+      // Signaler une erreur ne doit jamais en creer une seconde.
+    }
   }
 
   String _truncate(String value, int max) {

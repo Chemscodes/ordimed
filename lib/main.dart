@@ -1,12 +1,8 @@
 import 'dart:async';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
-import 'firebase_options.dart';
 import 'app_router.dart';
 import 'pages/login_page.dart';
 import 'pages/profile_selector_page.dart';
@@ -31,18 +27,15 @@ void main(List<String> args) async {
 
   await runZonedGuarded(
     () async {
-      await Firebase.initializeApp(
-        options: DefaultFirebaseOptions.currentPlatform,
-      );
+      // Rouvre la session enregistree avant de construire l'interface :
+      // sans ca, l'ecran de connexion s'afficherait une fraction de seconde
+      // avant d'etre remplace.
+      //
+      // Ce qui disparait avec Firestore : le cache local qui laissait le
+      // cabinet travailler pendant une coupure internet. Le backend est
+      // joignable ou il ne l'est pas — voir MIGRATION.md.
+      await AuthService().restaurer();
 
-      // Cache local : le cabinet continue de travailler pendant une coupure
-      // internet, et les ecritures sont rejouees au retour du reseau.
-      FirebaseFirestore.instance.settings = const Settings(
-        persistenceEnabled: true,
-        cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
-      );
-
-      // Installe apres Firebase : le rapporteur ecrit dans Firestore.
       ErrorReporter().install(appVersion: kAppVersion);
 
       runApp(MyApp(ultraLite: ultraLite));
@@ -101,16 +94,17 @@ class MyApp extends StatelessWidget {
                   child: child ?? const SizedBox.shrink(),
                 );
               },
-              home: StreamBuilder<User?>(
-                stream: context.read<AuthService>().authChanges(),
+              home: StreamBuilder<String?>(
+                stream: context.read<AuthService>().sessionChanges(),
                 builder: (context, snap) {
                   if (snap.connectionState == ConnectionState.waiting) {
                     return const Scaffold(
                       body: Center(child: CircularProgressIndicator()),
                     );
                   }
-                  if (snap.hasData && snap.data != null) {
-                    return ProfileSelectorPage(uid: snap.data!.uid);
+                  final cabinetId = snap.data;
+                  if (cabinetId != null) {
+                    return ProfileSelectorPage(uid: cabinetId);
                   }
                   return const LoginPage();
                 },

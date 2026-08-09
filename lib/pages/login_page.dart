@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+
+import '../services/api_client.dart';
+import '../services/auth_service.dart';
 import 'signup_page.dart';
 import 'profile_selector_page.dart';
 import '../ui/fluent_card.dart';
@@ -29,22 +31,24 @@ class _LoginPageState extends State<LoginPage> {
         return;
       }
       setState(() => _isSubmitting = true);
-      final cred = await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: email.text.trim(),
-        password: password.text.trim(),
+      final cabinetId = await AuthService().signIn(
+        email.text.trim(),
+        password.text.trim(),
       );
       if (!mounted) return;
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => ProfileSelectorPage(uid: cred.user!.uid)),
+        MaterialPageRoute(builder: (_) => ProfileSelectorPage(uid: cabinetId)),
       );
     } catch (e) {
       if (!mounted) return;
       showDialog(
         context: context,
         builder: (_) => AlertDialog(
-          title: const Text('Erreur'),
-          content: Text(e.toString()),
+          title: const Text('Connexion impossible'),
+          content: Text(
+            e is ApiException ? e.message : 'Une erreur est survenue',
+          ),
         ),
       );
     } finally {

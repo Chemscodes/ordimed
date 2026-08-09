@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+
+import '../services/api_client.dart';
+import '../services/auth_service.dart';
 import 'profile_selector_page.dart';
 import '../ui/fluent_card.dart';
 import '../ui/fluent_text_field.dart';
@@ -19,17 +20,6 @@ class _SignupPageState extends State<SignupPage> {
   bool _obscure = true;
   bool _isSubmitting = false;
 
-  Future<void> _createUserAndDefaultProfile(User user) async {
-    final userDoc = FirebaseFirestore.instance.collection('users').doc(user.uid);
-    await userDoc.set({'email': user.email ?? '', 'createdAt': FieldValue.serverTimestamp()});
-    await userDoc.collection('comptes').doc('medecin_principal').set({
-      'name': 'Médecin Principal',
-      'role': 'medecin_principal',
-      'pin': '0000',
-      'createdAt': FieldValue.serverTimestamp(),
-    });
-  }
-
   Future<void> signup() async {
     if (_isSubmitting) return;
     try {
@@ -40,21 +30,28 @@ class _SignupPageState extends State<SignupPage> {
         return;
       }
       setState(() => _isSubmitting = true);
-      final cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
-        email: email.text.trim(),
-        password: password.text.trim(),
+      // Le cabinet et son medecin principal sont crees ensemble par le
+      // backend : ils partaient deja ensemble ici, et un cabinet sans
+      // profil est inutilisable — on ne peut meme pas s'y connecter.
+      final cabinetId = await AuthService().signUp(
+        email.text.trim(),
+        password.text.trim(),
       );
-      await _createUserAndDefaultProfile(cred.user!);
       if (!mounted) return;
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => ProfileSelectorPage(uid: cred.user!.uid)),
+        MaterialPageRoute(builder: (_) => ProfileSelectorPage(uid: cabinetId)),
       );
     } catch (e) {
       if (!mounted) return;
       showDialog(
         context: context,
-        builder: (_) => AlertDialog(title: const Text('Erreur'), content: Text(e.toString())),
+        builder: (_) => AlertDialog(
+          title: const Text('Inscription impossible'),
+          content: Text(
+            e is ApiException ? e.message : 'Une erreur est survenue',
+          ),
+        ),
       );
     } finally {
       if (mounted) {
