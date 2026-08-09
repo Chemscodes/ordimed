@@ -1,10 +1,9 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import 'medecins_cards.dart';
 import '../core/format.dart' as fmt;
 import '../core/validate.dart' as v;
-import '../services/waiting_service.dart';
+import '../services/api_service.dart';
 import '../ui/app_field.dart';
 import '../ui/app_theme.dart';
 import '../ui/fluent_button.dart';
@@ -77,8 +76,6 @@ class _AddPatientFormState extends State<AddPatientForm> {
 
   static const int _dernierStep = 2;
 
-  String generateId() => FirebaseFirestore.instance.collection('tmp').doc().id;
-
   @override
   void initState() {
     super.initState();
@@ -102,43 +99,25 @@ class _AddPatientFormState extends State<AddPatientForm> {
 
   Future<void> _loadMotifsFromProfile() async {
     try {
-      final userRef = FirebaseFirestore.instance
-          .collection('users')
-          .doc(widget.parentUid);
-      final parentSnap = await userRef.get();
-      final rawParent = parentSnap.data()?['motifsPredefinis'];
-      List<String> fetched = [];
-      if (rawParent is List) {
-        fetched = rawParent
-            .map((e) => e.toString().trim())
-            .where((e) => e.isNotEmpty)
-            .toList();
-      }
-      if (fetched.isEmpty) {
-        final snap = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(widget.parentUid)
-            .collection('comptes')
-            .doc(widget.assistantProfileId)
-            .get();
-        final raw = snap.data()?['motifsPredefinis'];
-        if (raw is List) {
-          fetched = raw
-              .map((e) => e.toString().trim())
-              .where((e) => e.isNotEmpty)
-              .toList();
-        }
-        if (fetched.isNotEmpty) {
-          await userRef.set({
-            'motifsPredefinis': fetched,
-          }, SetOptions(merge: true));
-        }
-      }
+      // Le repli sur le profil assistant disparait : Firestore gardait les
+      // motifs a deux endroits — le cabinet et le profil — et il fallait
+      // recopier les seconds sur le premier au premier chargement. Le
+      // backend n'en a plus qu'une source.
+      final cabinet = await ApiService.instance.cabinet();
+      final brut = cabinet['motifsPredefinis'];
+      final fetched = brut is List
+          ? brut
+                .map((e) => e.toString().trim())
+                .where((e) => e.isNotEmpty)
+                .toList()
+          : <String>[];
       if (fetched.isNotEmpty && mounted) {
         setState(() => motifsOptions = fetched);
       }
     } catch (_) {
-      // Échec de chargement : on garde les motifs par défaut.
+      // Sans motifs predefinis la saisie reste possible : le champ libre
+      // suffit. Bloquer la creation d'un dossier pour une liste de
+      // suggestions serait disproportionne.
     }
   }
 
@@ -209,94 +188,35 @@ class _AddPatientFormState extends State<AddPatientForm> {
 
     setState(() => _isSaving = true);
     try {
-      final patientId = generateId();
-
-      // L'âge part désormais en **entier**. Les anciens dossiers l'ont en
-      // chaîne ; les lectures passent par asIntOrNull, qui accepte les deux.
+      // L'age part en entier. Les anciens dossiers l'ont en chaine ; le
+      // backend accepte les deux et normalise.
       final ageValue = int.tryParse(age.text.trim());
 
-      final data = {
+      // Cinq ecritures tenaient ici : le dossier chez le medecin, le meme
+      // chez l'assistant, l'entree en salle d'attente, et le formulaire
+      // initial sous chacune des deux copies. Firestore ne sachant pas
+      // joindre, il fallait tout dupliquer — et un echec partiel laissait le
+      // dossier visible d'un cote et absent de l'autre.
+      //
+      // C'est une requete, et une transaction cote serveur.
+      final cree = await ApiService.instance.creerPatient({
         'nom': nom.text.trim(),
         'prenom': prenom.text.trim(),
         if (ageValue != null) 'age': ageValue,
-        // Normalisé : +213… et 00213… deviennent 0…, pour que la recherche
-        // et les rappels WhatsApp retombent sur le même numéro.
+        // Normalise : +213… et 00213… deviennent 0…, pour que la recherche
+        // et les rappels WhatsApp retombent sur le meme numero.
         'tel': v.normalizePhone(tel.text),
         'email': email.text.trim(),
         'origine': origine,
         'motifs': motifs.toList(),
-        'motif': motifs.isEmpty ? '' : motifs.join(', '),
         'doctorId': selectedDoctorId,
         'assistantId': widget.assistantProfileId,
         'assistantName': widget.assistantName,
         'assignedMedecinName': selectedDoctorData?['name'] ?? '',
         'createdByAssistantProfileId': widget.assistantProfileId,
-        'parentUid': widget.parentUid,
-        'profileId': widget.assistantProfileId,
-        'createdAt': FieldValue.serverTimestamp(),
-      };
-
-      final doctorRef = FirebaseFirestore.instance
-          .collection('users')
-          .doc(widget.parentUid)
-          .collection('comptes')
-          .doc(selectedDoctorId)
-          .collection('patients')
-          .doc(patientId);
-      final assistantRef = FirebaseFirestore.instance
-          .collection('users')
-          .doc(widget.parentUid)
-          .collection('comptes')
-          .doc(widget.assistantProfileId)
-          .collection('patients')
-          .doc(patientId);
-
-      // Création du patient sur le medecin et l'assistant, en une seule
-      // ecriture atomique : un echec partiel laissait le dossier visible
-      // d'un cote et absent de l'autre.
-      final batch = FirebaseFirestore.instance.batch();
-      batch.set(doctorRef, data);
-      batch.set(assistantRef, data);
-      await batch.commit();
-
-      // Ajout en salle d'attente (assistant + medecin + principal)
-      try {
-        final addedToWaiting = await WaitingService().addToWaiting(
-          parentUid: widget.parentUid,
-          assistantId: widget.assistantProfileId,
-          assistantName: widget.assistantName,
-          doctorId: selectedDoctorId!,
-          doctorName: (data['assignedMedecinName'] ?? '').toString(),
-          patientId: patientId,
-          patientNom: (data['nom'] ?? '').toString(),
-          patientPrenom: (data['prenom'] ?? '').toString(),
-        );
-        if (mounted && !addedToWaiting) {
-          await _erreur("Patient déjà en salle d'attente");
-        }
-      } catch (_) {
-        await _erreur("Patient créé, mais échec de l'ajout en salle d'attente");
-      }
-
-      // Formulaire initial, visible du médecin comme de l'assistant.
-      final formContent = formulaireInitial.text.trim().isEmpty
-          ? "Dossier initial créé par l'assistant"
-          : formulaireInitial.text.trim();
-      final initialForm = {
-        'type': 'Dossier initial',
-        'contenu': formContent,
-        'createdAt': FieldValue.serverTimestamp(),
-        'auteurProfileId': widget.assistantProfileId,
-        // Ces deux champs manquaient : sans eux, la recherche transversale
-        // des documents d'un patient ne remontait pas le dossier initial.
-        'parentUid': widget.parentUid,
-        'patientId': patientId,
-      };
-
-      await Future.wait([
-        doctorRef.collection('forms').add(initialForm),
-        assistantRef.collection('forms').add(initialForm),
-      ]);
+        'formulaireInitial': formulaireInitial.text.trim(),
+      });
+      final patientId = (cree['id'] ?? '').toString();
 
       if (!mounted) return;
       ScaffoldMessenger.of(context)

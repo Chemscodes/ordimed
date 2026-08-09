@@ -17,6 +17,6 @@ router.post('/logout', ctrl.logout);
 router.post('/pin', exigeAuth, asyncHandler(ctrl.verifierPin));
 
 router.get('/me', exigeAuth, asyncHandler(ctrl.moi));
-router.put('/horaires', exigeAuth, asyncHandler(ctrl.majHoraires));
+router.put('/cabinet', exigeAuth, asyncHandler(ctrl.majCabinet));
 
 module.exports = router;

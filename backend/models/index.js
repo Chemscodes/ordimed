@@ -59,6 +59,14 @@ const CabinetSchema = new Schema(
     // Firebase Auth gardait le mot de passe. Ici c'est notre responsabilité.
     passwordHash: { type: String, required: true },
     horaires: { type: HorairesSchema, default: () => ({}) },
+    /**
+     * Motifs de consultation proposes a la saisie.
+     *
+     * Vivaient sur le document du cabinet, avec un repli sur le profil
+     * assistant pour les cabinets d'avant leur introduction. Le repli est
+     * conserve a l'import ; ici il n'y a plus qu'une source.
+     */
+    motifsPredefinis: { type: [String], default: [] },
     createdAt: { type: Date, default: Date.now },
   },
   options

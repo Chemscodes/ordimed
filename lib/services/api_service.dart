@@ -87,8 +87,12 @@ class ApiService {
   Future<Map<String, dynamic>> cabinet() async =>
       _objet(await _api.get('/auth/me'));
 
+  /// Reglages du cabinet : horaires, motifs predefinis.
+  Future<Map<String, dynamic>> majCabinet(Map<String, dynamic> champs) async =>
+      _objet(await _api.put('/auth/cabinet', champs));
+
   Future<void> majHoraires(Map<String, dynamic> horaires) =>
-      _api.put('/auth/horaires', {'horaires': horaires});
+      majCabinet({'horaires': horaires});
 
   // -----------------------------------------------------------------
   //  Profils

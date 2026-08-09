@@ -120,16 +120,24 @@ exports.moi = async (req, res) => {
 };
 
 /**
- * Les horaires du cabinet.
+ * Les réglages du cabinet : horaires et motifs prédéfinis.
  *
- * Aucun écran ne permettait de les régler — ils étaient lus depuis
- * `users/{uid}.horaires` s'il existait, sinon codés en dur. La route existe
- * pour que l'écran de réglages ait où écrire.
+ * Aucun écran ne permet encore de régler les horaires — ils étaient lus
+ * depuis `users/{uid}.horaires` s'il existait, sinon codés en dur. La route
+ * existe pour que l'écran de réglages ait où écrire.
  */
-exports.majHoraires = async (req, res) => {
+exports.majCabinet = async (req, res) => {
+  const maj = {};
+  if (req.body.horaires !== undefined) maj.horaires = req.body.horaires;
+  if (Array.isArray(req.body.motifsPredefinis)) {
+    maj.motifsPredefinis = req.body.motifsPredefinis
+      .map((m) => String(m).trim())
+      .filter(Boolean);
+  }
+
   const cabinet = await Cabinet.findByIdAndUpdate(
     req.parentUid,
-    { horaires: req.body.horaires || {} },
+    { $set: maj },
     { new: true, runValidators: true }
   );
   if (!cabinet) return res.status(404).json({ error: 'Cabinet introuvable' });
