@@ -639,7 +639,7 @@ class _VersementCardsForDayState extends State<_VersementCardsForDay> {
 
         // Lecture directe de l'agregat du jour (1 document) au lieu de
         // scanner toute la base de patients du cabinet.
-        return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+        return StreamBuilder<Map<String, dynamic>?>(
           stream: StatsService().dailyStatsDoc(
             parentUid: widget.parentUid,
             dayKey: _todayKey(),
@@ -658,7 +658,7 @@ class _VersementCardsForDayState extends State<_VersementCardsForDay> {
               );
             }
 
-            final data = snapshot.data?.data() ?? const <String, dynamic>{};
+            final data = snapshot.data ?? const <String, dynamic>{};
             final cabinetTotal = _asDouble(data['versementsTotal']);
             final cabinetCount = (data['versementsCount'] as num?)?.toInt() ?? 0;
 
@@ -1179,11 +1179,11 @@ class _NetDailyCardPrincipal extends StatelessWidget {
   Widget build(BuildContext context) {
     final statsStream =
         StatsService().dailyStatsDoc(parentUid: parentUid, dayKey: _todayKey());
-    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+    return StreamBuilder<Map<String, dynamic>?>(
       stream: statsStream,
       builder: (context, statsSnap) {
-        final data = statsSnap.data?.data();
-        if (data != null && statsSnap.data!.exists) {
+        final data = statsSnap.data;
+        if (data != null) {
           final versementsTotal = _asDouble(data['versementsTotal']) ?? 0;
           final versementsCount = (data['versementsCount'] as num?)?.toInt() ?? 0;
           final achatsTotal = _asDouble(data['achatsTotal']) ?? 0;

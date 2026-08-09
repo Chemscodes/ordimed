@@ -1,8 +1,8 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import '../core/creneaux.dart';
 import '../core/format.dart' as fmt;
+import '../services/api_service.dart';
 import '../services/rendezvous_repository.dart';
 import '../ui/app_theme.dart';
 import '../ui/fluent_button.dart';
@@ -67,11 +67,8 @@ class _ChoixCreneauPageState extends State<ChoixCreneauPage> {
 
   Future<void> _chargerHoraires() async {
     try {
-      final snap = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(widget.parentUid)
-          .get();
-      final data = snap.data()?['horaires'];
+      final cabinet = await ApiService.instance.cabinet();
+      final data = cabinet['horaires'];
       if (mounted) {
         setState(() {
           _horaires = HorairesCabinet.fromMap(
@@ -166,7 +163,7 @@ class _ChoixCreneauPageState extends State<ChoixCreneauPage> {
       );
     }
 
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+    return StreamBuilder<List<Map<String, dynamic>>>(
       stream: RendezVousRepository().journee(
         parentUid: widget.parentUid,
         profileId: widget.doctorId,
@@ -184,11 +181,11 @@ class _ChoixCreneauPageState extends State<ChoixCreneauPage> {
           return const Center(child: CircularProgressIndicator());
         }
 
-        final occupations = snap.data!.docs
+        final occupations = snap.data!
             .map(
               (d) => Occupation.fromRendezVous(
-                d.id,
-                d.data(),
+                (d['id'] ?? '').toString(),
+                d,
                 dureeParDefaut: _horaires.duree,
               ),
             )

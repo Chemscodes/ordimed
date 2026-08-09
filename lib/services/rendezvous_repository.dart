@@ -1,41 +1,18 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-
-import '../core/coerce.dart';
+import 'api_client.dart';
+import 'api_service.dart';
 import '../core/parcours.dart';
-import 'waiting_service.dart';
 
-/// Les rendez-vous, et leur avancement dans le parcours.
+/// Les rendez-vous.
 ///
-/// Un rendez-vous existe en trois exemplaires — médecin, assistant, médecin
-/// principal — pour que chacun le lise dans sa propre collection sans
-/// requête croisée. Toute écriture doit donc toucher les trois, sinon les
-/// profils divergent : c'est le rôle de [_fanOut].
+/// Le fichier ecrivait chaque rendez-vous en trois exemplaires — medecin,
+/// assistant, medecin principal — et refaisait ce fan-out a chaque
+/// changement d'etape. Un seul document maintenant : les trois profils le
+/// retrouvent par requete, et deux copies ne peuvent plus diverger.
+///
+/// Les signatures sont conservees pour que les appelants n'aient pas a
+/// changer dans le meme commit.
 class RendezVousRepository {
-  final FirebaseFirestore _db = FirebaseFirestore.instance;
-
-  CollectionReference<Map<String, dynamic>> _comptes(String parentUid) =>
-      _db.collection('users').doc(parentUid).collection('comptes');
-
-  /// Les trois copies d'un rendez-vous, sans doublon.
-  ///
-  /// L'ensemble déduplique : quand le profil courant est déjà le médecin,
-  /// écrire deux fois dans un batch sur la même référence est inutile.
-  List<DocumentReference<Map<String, dynamic>>> _fanOut({
-    required String parentUid,
-    required String rdvId,
-    required String doctorId,
-    required String assistantId,
-  }) {
-    final base = _comptes(parentUid);
-    final profils = <String>{
-      'medecin_principal',
-      if (doctorId.isNotEmpty) doctorId,
-      if (assistantId.isNotEmpty) assistantId,
-    };
-    return [
-      for (final p in profils) base.doc(p).collection('rendezvous').doc(rdvId),
-    ];
-  }
+  final _api = ApiService.instance;
 
   Future<void> planifier({
     required String parentUid,
@@ -43,30 +20,14 @@ class RendezVousRepository {
     required String assistantId,
     required Map<String, dynamic> rdvData,
   }) async {
-    final rdvId = _db.collection('tmp').doc().id;
-    final data = {
+    await _api.planifier({
       ...rdvData,
-      'rdvId': rdvId,
-      'etape': EtapeParcours.planifie.code,
-    };
-
-    final batch = _db.batch();
-    for (final ref in _fanOut(
-      parentUid: parentUid,
-      rdvId: rdvId,
-      doctorId: doctorId,
-      assistantId: assistantId,
-    )) {
-      batch.set(ref, data);
-    }
-    await batch.commit();
+      'doctorId': doctorId,
+      'assistantId': assistantId,
+    });
   }
 
-  /// Fait avancer un rendez-vous d'une étape, sur les trois copies.
-  ///
-  /// L'horodatage porte le nom de l'étape (`arriveAt`, `honoreAt`…) : savoir
-  /// *quand* un patient est arrivé et *quand* il est passé est ce qui permet
-  /// plus tard de mesurer une attente réelle.
+  /// Fait avancer un rendez-vous d'une etape.
   Future<void> changerEtape({
     required String parentUid,
     required String rdvId,
@@ -74,94 +35,40 @@ class RendezVousRepository {
     required String assistantId,
     required EtapeParcours etape,
     String? motifAnnulation,
-  }) async {
-    final payload = <String, dynamic>{
-      'etape': etape.code,
-      '${etape.code}At': FieldValue.serverTimestamp(),
-    };
-    if (motifAnnulation != null && motifAnnulation.trim().isNotEmpty) {
-      payload['motifAnnulation'] = motifAnnulation.trim();
-    }
+  }) => _api.changerEtapeRdv(
+    rdvId,
+    etape.code,
+    motifAnnulation: motifAnnulation,
+  );
 
-    final batch = _db.batch();
-    for (final ref in _fanOut(
-      parentUid: parentUid,
-      rdvId: rdvId,
-      doctorId: doctorId,
-      assistantId: assistantId,
-    )) {
-      batch.set(ref, payload, SetOptions(merge: true));
-    }
-    await batch.commit();
-  }
-
-  /// Le patient se présente : le rendez-vous entre en salle d'attente.
+  /// Le patient se presente : le rendez-vous entre en salle d'attente.
   ///
-  /// C'était le trou du parcours. L'assistant devait ressaisir le patient
-  /// dans la file alors que le rendez-vous portait déjà tout — nom, médecin,
-  /// motif. Deux saisies pour un seul fait, et aucun lien entre les deux :
-  /// le rendez-vous restait « à venir » même une fois le patient reparti.
+  /// C'etait le trou du parcours — l'assistant devait ressaisir le patient
+  /// dans la file alors que le rendez-vous portait deja tout. Les deux
+  /// ecritures sont maintenant une transaction serveur : le rendez-vous
+  /// n'est pas marque si la mise en salle echoue.
   ///
-  /// Renvoie `false` si le patient a déjà une entrée ouverte, auquel cas le
-  /// rendez-vous n'est pas marqué : rien ne s'est passé.
+  /// Renvoie `false` si le patient a deja une entree ouverte.
   Future<bool> marquerArrive({
     required String parentUid,
     required String rdvId,
     required Map<String, dynamic> rdv,
     required String profileId,
   }) async {
-    final doctorId = asText(rdv['doctorId']);
-    final assistantId = asText(rdv['assistantId']).isNotEmpty
-        ? asText(rdv['assistantId'])
-        : profileId;
-
-    final place = await WaitingService().addToWaiting(
-      parentUid: parentUid,
-      assistantId: assistantId,
-      assistantName: asText(rdv['assistantName']),
-      doctorId: doctorId,
-      doctorName: asText(rdv['doctorName']),
-      patientId: asText(rdv['patientId']),
-      patientNom: asText(rdv['patientNom']),
-      patientPrenom: asText(rdv['patientPrenom']),
-      rdvId: rdvId,
-      motif: asText(rdv['motif']),
-    );
-    if (!place) return false;
-
-    await changerEtape(
-      parentUid: parentUid,
-      rdvId: rdvId,
-      doctorId: doctorId,
-      assistantId: assistantId,
-      etape: EtapeParcours.arrive,
-    );
-    return true;
+    try {
+      await _api.marquerArrive(rdvId);
+      return true;
+    } on ApiException catch (e) {
+      if (e.estConflit) return false;
+      rethrow;
+    }
   }
 
-  /// Rendez-vous d'un profil sur une journée, du plus tôt au plus tard.
+  /// Marque honore le rendez-vous d'ou vient une consultation.
   ///
-  /// Sert à savoir ce qui est déjà pris avant d'en poser un nouveau.
-  Stream<QuerySnapshot<Map<String, dynamic>>> journee({
-    required String parentUid,
-    required String profileId,
-    required DateTime jour,
-  }) {
-    final debut = DateTime(jour.year, jour.month, jour.day);
-    final fin = debut.add(const Duration(days: 1));
-    return _comptes(parentUid)
-        .doc(profileId)
-        .collection('rendezvous')
-        .where('datetime', isGreaterThanOrEqualTo: Timestamp.fromDate(debut))
-        .where('datetime', isLessThan: Timestamp.fromDate(fin))
-        .snapshots();
-  }
-
-  /// Marque honoré le rendez-vous d'où vient une consultation.
-  ///
-  /// Sans effet quand la consultation n'est rattachée à aucun rendez-vous —
-  /// un patient qui se présente sans rendez-vous est un cas normal, pas une
-  /// erreur à signaler.
+  /// Sans effet quand la consultation n'est rattachee a aucun rendez-vous.
+  /// La cloture le fait desormais elle-meme, dans sa transaction ; cette
+  /// methode reste pour les appelants qui ne passent pas par la file.
   Future<void> honorerDepuisVisite({
     required String parentUid,
     required String? rdvId,
@@ -169,13 +76,15 @@ class RendezVousRepository {
     required String assistantId,
   }) async {
     if (rdvId == null || rdvId.isEmpty) return;
-    await changerEtape(
-      parentUid: parentUid,
-      rdvId: rdvId,
-      doctorId: doctorId,
-      assistantId: assistantId,
-      etape: EtapeParcours.honore,
-    );
+    await _api.changerEtapeRdv(rdvId, EtapeParcours.honore.code);
   }
 
+  /// Les rendez-vous d'un medecin sur une journee.
+  ///
+  /// Sert a savoir ce qui est deja pris avant d'en poser un nouveau.
+  Stream<List<Map<String, dynamic>>> journee({
+    required String parentUid,
+    required String profileId,
+    required DateTime jour,
+  }) => _api.rendezVousFlux(profileId: profileId, jour: jour);
 }

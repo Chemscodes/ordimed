@@ -1,94 +1,67 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'api_service.dart';
 
+/// Les statistiques du cabinet.
+///
+/// `daily_stats` reste un document agrege par jour, comme dans Firestore :
+/// le graphique lit une poignee de documents au lieu de parcourir tous les
+/// versements du cabinet.
+///
+/// Ce qui change : les increments ne partent plus de l'app. Le backend met a
+/// jour la statistique **dans la meme transaction** que le versement ou
+/// l'achat. Avant, c'etait une seconde ecriture apres coup — si elle
+/// echouait, les chiffres du cabinet cessaient de tomber juste sans que
+/// personne ne le sache.
 class StatsService {
   StatsService._internal();
+
   static final StatsService _instance = StatsService._internal();
+
   factory StatsService() => _instance;
 
-  final FirebaseFirestore _db = FirebaseFirestore.instance;
-
-  String dayKey(DateTime dt) {
-    final d = DateTime(dt.year, dt.month, dt.day);
-    return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
-  }
+  final _api = ApiService.instance;
 
   DateTime startOfDay(DateTime dt) => DateTime(dt.year, dt.month, dt.day);
 
-  Stream<DocumentSnapshot<Map<String, dynamic>>> dailyStatsDoc({
+  static String dayKeyOf(DateTime d) {
+    String p(int v) => v.toString().padLeft(2, '0');
+    return '${d.year}-${p(d.month)}-${p(d.day)}';
+  }
+
+  /// La statistique d'un jour. `null` s'il ne s'est rien passe.
+  Stream<Map<String, dynamic>?> dailyStatsDoc({
     required String parentUid,
     required String dayKey,
-  }) {
-    return _db
-        .collection('users')
-        .doc(parentUid)
-        .collection('daily_stats')
-        .doc(dayKey)
-        .snapshots();
-  }
+  }) => _api
+      .statsFlux(depuis: dayKey)
+      .map((liste) {
+        for (final s in liste) {
+          if (s['dayKey'] == dayKey) return s;
+        }
+        return null;
+      });
 
-  Stream<QuerySnapshot<Map<String, dynamic>>> recentDailyStats({
+  Stream<List<Map<String, dynamic>>> recentDailyStats({
     required String parentUid,
     int limit = 7,
-  }) {
-    return _db
-        .collection('users')
-        .doc(parentUid)
-        .collection('daily_stats')
-        .orderBy('date', descending: true)
-        .limit(limit)
-        .snapshots();
-  }
+  }) => _api.statsFlux().map(
+    (liste) => liste.length <= limit ? liste : liste.sublist(0, limit),
+  );
 
+  /// Ces deux methodes n'ont plus rien a faire.
+  ///
+  /// Le versement et l'achat mettent eux-memes a jour la statistique du
+  /// jour, cote serveur et dans la meme transaction. Les appels sont
+  /// conserves sans effet pour ne pas toucher aux appelants dans le meme
+  /// commit ; ils disparaitront avec eux.
   Future<void> addVersement({
     required String parentUid,
     required double montant,
     String? doctorId,
-    String doctorName = '',
-    DateTime? when,
-  }) async {
-    final dt = when ?? DateTime.now();
-    final key = dayKey(dt);
-    final ref =
-        _db.collection('users').doc(parentUid).collection('daily_stats').doc(key);
-
-    // Cle du medecin destinataire ('_none' si non renseigne). Permet au
-    // tableau de bord directeur d'afficher le detail par medecin sans avoir
-    // a scanner toute la base de patients.
-    final docKey = (doctorId == null || doctorId.trim().isEmpty)
-        ? '_none'
-        : doctorId.trim();
-
-    await ref.set({
-      'dayKey': key,
-      'date': Timestamp.fromDate(startOfDay(dt)),
-      'versementsTotal': FieldValue.increment(montant),
-      'versementsCount': FieldValue.increment(1),
-      'doctorVersements': {
-        docKey: {
-          'total': FieldValue.increment(montant),
-          'count': FieldValue.increment(1),
-          if (doctorName.trim().isNotEmpty) 'name': doctorName.trim(),
-        },
-      },
-      'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
-  }
+    String? doctorName,
+  }) async {}
 
   Future<void> addAchat({
     required String parentUid,
     required double montant,
-    DateTime? when,
-  }) async {
-    final dt = when ?? DateTime.now();
-    final key = dayKey(dt);
-    final ref =
-        _db.collection('users').doc(parentUid).collection('daily_stats').doc(key);
-    await ref.set({
-      'dayKey': key,
-      'date': Timestamp.fromDate(startOfDay(dt)),
-      'achatsTotal': FieldValue.increment(montant),
-      'achatsCount': FieldValue.increment(1),
-      'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
-  }
+  }) async {}
 }

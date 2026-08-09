@@ -373,7 +373,7 @@ class StatsPage extends StatelessWidget {
             ),
         iconTheme: IconThemeData(color: scheme.primary),
       ),
-      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      body: StreamBuilder<List<Map<String, dynamic>>>(
         stream: statsStream,
         builder: (context, snap) {
           if (snap.hasError) {
@@ -387,15 +387,15 @@ class StatsPage extends StatelessWidget {
           if (!snap.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
-          final docs = snap.data!.docs;
+          final docs = snap.data!;
           if (docs.isEmpty) {
             return const Center(
               child: Text('Aucune statistique disponible'),
             );
           }
           final rows = docs.map((doc) {
-            final data = doc.data();
-            final dayKey = (data['dayKey'] ?? doc.id).toString();
+            final data = doc;
+            final dayKey = (data['dayKey'] ?? doc['id'].toString()).toString();
             final date = _asDate(data['date'], dayKey);
             return _DailyStatsRow(
               date: date,

@@ -1106,11 +1106,11 @@ class _NetDailyCardAssistant extends StatelessWidget {
       parentUid: parentUid,
       dayKey: _todayKey(),
     );
-    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+    return StreamBuilder<Map<String, dynamic>?>(
       stream: statsStream,
       builder: (context, statsSnap) {
-        final data = statsSnap.data?.data();
-        if (data != null && statsSnap.data!.exists) {
+        final data = statsSnap.data;
+        if (data != null) {
           final versementsTotal = _toDouble(data['versementsTotal']);
           final versementsCount =
               (data['versementsCount'] as num?)?.toInt() ?? 0;
