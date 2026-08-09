@@ -1,5 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'profile_selector_page.dart';
 import 'consultation_page.dart';
@@ -8,6 +6,8 @@ import 'stats_page.dart';
 import '../ui/app_shell.dart';
 import '../ui/fluent_card.dart';
 import '../ui/fluent_button.dart';
+import '../services/api_service.dart';
+import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
 import '../services/soft_delete.dart';
 import '../services/waiting_service.dart';
@@ -96,7 +96,7 @@ class _DashboardMedecinState extends State<DashboardMedecin> {
           tooltip: 'Deconnexion',
           icon: const Icon(Icons.logout, color: Colors.white),
           onPressed: () async {
-            await FirebaseAuth.instance.signOut();
+            await AuthService().signOut();
             if (context.mounted) {
               Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
             }
@@ -209,14 +209,15 @@ class _DashboardMedecinState extends State<DashboardMedecin> {
   }
 
   Future<void> _editMyProfile(BuildContext context) async {
-    final docRef = FirebaseFirestore.instance
-        .collection('users')
-        .doc(widget.parentUid)
-        .collection('comptes')
-        .doc(widget.profileId);
-
-    final snap = await docRef.get();
-    final currentName = (snap.data()?['name'] ?? _doctorName ?? '').toString();
+    final profil = await ApiService.instance
+        .profils()
+        .then(
+          (liste) => liste.firstWhere(
+            (p) => p['id'] == widget.profileId,
+            orElse: () => <String, dynamic>{},
+          ),
+        );
+    final currentName = (profil['name'] ?? _doctorName ?? '').toString();
     final nameCtrl = TextEditingController(text: currentName);
 
     final res = await showDialog<bool>(
@@ -252,7 +253,7 @@ class _DashboardMedecinState extends State<DashboardMedecin> {
       return;
     }
 
-    await docRef.set({'name': newName}, SetOptions(merge: true));
+    await ApiService.instance.majProfil(widget.profileId, {'name': newName});
     if (mounted) {
       setState(() => _doctorName = newName);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -271,11 +272,10 @@ class _WeeklyFinanceChartMedecin extends StatelessWidget {
     required this.profileId,
   });
 
-  DateTime _asDate(dynamic value) {
-    if (value is Timestamp) return value.toDate();
-    if (value is DateTime) return value;
-    return DateTime.fromMillisecondsSinceEpoch(0);
-  }
+  // asDateOrNull accepte l'ISO du backend comme les Timestamp encore
+  // presents dans les donnees importees.
+  DateTime _asDate(dynamic value) =>
+      asDateOrNull(value) ?? DateTime.fromMillisecondsSinceEpoch(0);
 
   String _dayKey(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
@@ -289,21 +289,16 @@ class _WeeklyFinanceChartMedecin extends StatelessWidget {
     final days = List.generate(7, (i) => firstDay.add(Duration(days: i)));
     final dayKeys = days.map(_dayKey).toList();
 
-    final patientsStream = FirebaseFirestore.instance
-        .collection('users')
-        .doc(parentUid)
-        .collection('comptes')
-        .doc(profileId)
-        .collection('patients')
-        .snapshots();
+    final patientsStream = ApiService.instance.patientsFlux(
+      profileId: profileId,
+    );
 
-    final purchasesStream = FirebaseFirestore.instance
-        .collectionGroup('purchases')
-        .where('parentUid', isEqualTo: parentUid)
-        .where('dayKey', whereIn: dayKeys)
-        .snapshots();
+    // Le collectionGroup et son filtre `whereIn` sur sept cles disparaissent :
+    // la hierarchie n'existe plus, et le filtrage par jour se fait ici sur
+    // une liste deja restreinte au cabinet.
+    final purchasesStream = ApiService.instance.achatsFlux();
 
-    return StreamBuilder<QuerySnapshot>(
+    return StreamBuilder<List<Map<String, dynamic>>>(
       stream: patientsStream,
       builder: (context, patientSnap) {
         if (!patientSnap.hasData) {
@@ -315,8 +310,7 @@ class _WeeklyFinanceChartMedecin extends StatelessWidget {
 
         // Prépare les versements par jour
         final versementsByDay = <String, double>{for (var d in days) _dayKey(d): 0};
-        for (final doc in patientSnap.data!.docs) {
-          final data = doc.data() as Map<String, dynamic>;
+        for (final data in patientSnap.data!) {
           final versements = data['versements'];
           if (versements is! List) continue;
           for (final v in versements) {
@@ -330,19 +324,18 @@ class _WeeklyFinanceChartMedecin extends StatelessWidget {
           }
         }
 
-        return StreamBuilder<QuerySnapshot>(
+        return StreamBuilder<List<Map<String, dynamic>>>(
           stream: purchasesStream,
           builder: (context, purchaseSnap) {
             final achatsByDay = <String, double>{for (var d in days) _dayKey(d): 0};
             if (purchaseSnap.hasData) {
-              for (final d in purchaseSnap.data!.docs) {
-                final data = d.data() as Map<String, dynamic>;
+              for (final data in purchaseSnap.data!) {
                 // Filtrer sur le médecin actuel
                 final owner = (data['profileId'] ?? '').toString();
                 if (owner.isNotEmpty && owner != profileId) continue;
-                // fallback: vérifier le chemin
-                final pathParts = d.reference.path.split('/');
-                if (pathParts.length > 4 && pathParts[1] != parentUid) continue;
+                // Le repli sur le chemin du document disparait : le cabinet
+                // est garanti par le jeton, plus par la place du document
+                // dans une hierarchie.
 
                 final created = _asDate(data['createdAt']);
                 final key = _dayKey(created);
@@ -865,20 +858,11 @@ class _RendezVousTabState extends State<_RendezVousTab> {
     final startOfDay = DateTime(now.year, now.month, now.day);
     final endOfDay = startOfDay.add(const Duration(days: 1));
     final recentCutoff = startOfDay.subtract(const Duration(days: _lookbackDays));
-    Query<Map<String, dynamic>> ref = FirebaseFirestore.instance
-        .collection('users')
-        .doc(widget.parentUid)
-        .collection('comptes')
-        .doc(widget.profileId)
-        .collection('salle_attente')
-        .orderBy('createdAt', descending: true);
-    if (!_showAll) {
-      ref = ref.where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(recentCutoff));
-    }
-    ref = ref.limit(_limit);
-    final stream = ref.snapshots();
+    final stream = ApiService.instance.salleAttenteFlux(
+      profileId: widget.profileId,
+    );
 
-    return StreamBuilder<QuerySnapshot>(
+    return StreamBuilder<List<Map<String, dynamic>>>(
       stream: stream,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
@@ -888,30 +872,36 @@ class _RendezVousTabState extends State<_RendezVousTab> {
           return const Center(child: CircularProgressIndicator());
         }
 
-        final docs = snapshot.data!.docs;
-        final waiting = <QueryDocumentSnapshot>[];
-        final inConsultation = <QueryDocumentSnapshot>[];
-        final historyToday = <QueryDocumentSnapshot>[];
+        // Le filtrage par date se fait ici : une contrainte serveur sur
+        // `createdAt` exclurait les entrees qui n'ont pas ce champ.
+        final docs = _showAll
+            ? snapshot.data!
+            : snapshot.data!.where((e) {
+                final c = asDateOrNull(e['createdAt']);
+                return c == null || !c.isBefore(recentCutoff);
+              }).toList();
 
-        for (final d in docs) {
-          final data = d.data() as Map<String, dynamic>;
+        final waiting = <Map<String, dynamic>>[];
+        final inConsultation = <Map<String, dynamic>>[];
+        final historyToday = <Map<String, dynamic>>[];
+
+        for (final data in docs) {
           final status = (data['status'] ?? '').toString();
-          final closed = data['closedAt'];
-          final closedTs = closed is Timestamp ? closed.toDate() : null;
+          final closedTs = asDateOrNull(data['closedAt']);
           final isDone = status == 'done' || closedTs != null;
           if (isDone) {
             if (closedTs != null &&
                 closedTs.isAfter(startOfDay.subtract(const Duration(milliseconds: 1))) &&
                 closedTs.isBefore(endOfDay)) {
-              historyToday.add(d);
+              historyToday.add(data);
             }
             continue;
           }
           if (status == 'in_consultation') {
-            inConsultation.add(d);
+            inConsultation.add(data);
             continue;
           }
-          waiting.add(d);
+          waiting.add(data);
         }
 
         if (waiting.isEmpty && inConsultation.isEmpty && historyToday.isEmpty) {
@@ -965,15 +955,13 @@ class _RendezVousTabState extends State<_RendezVousTab> {
                     )
                   else
                     ...List.generate(inConsultation.length, (index) {
-                      final data = inConsultation[index].data() as Map<String, dynamic>;
+                      final data = inConsultation[index];
                       final patient = data['patientNom'] ?? 'Patient';
                       final doctor = (data['doctorName'] ?? data['doctorId'] ?? '').toString();
                       final assistant = (data['assistantName'] ?? data['assistantId'] ?? '').toString();
                       final seancesTotal = _toInt(data['nombreSeances']);
                       final seancesDone = _toInt(data['seancesEffectuees']);
-                      final started = data['inConsultationAt'] is Timestamp
-                          ? (data['inConsultationAt'] as Timestamp).toDate()
-                          : null;
+                      final started = asDateOrNull(data['inConsultationAt']);
                       final startStr = started != null
                           ? '${started.hour.toString().padLeft(2, '0')}:${started.minute.toString().padLeft(2, '0')}'
                           : '';
@@ -1034,15 +1022,13 @@ if (doctor.isNotEmpty) 'Dr $doctor',
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
                       itemBuilder: (context, index) {
-                        final data = waiting[index].data() as Map<String, dynamic>;
+                        final data = waiting[index];
                         final patient = data['patientNom'] ?? 'Patient';
                         final doctor = (data['doctorName'] ?? data['doctorId'] ?? '').toString();
                         final assistant = (data['assistantName'] ?? data['assistantId'] ?? '').toString();
                         final seancesTotal = _toInt(data['nombreSeances']);
                         final seancesDone = _toInt(data['seancesEffectuees']);
-                        final created = data['createdAt'] is Timestamp
-                            ? (data['createdAt'] as Timestamp).toDate()
-                            : null;
+                        final created = asDateOrNull(data['createdAt']);
                         final createdStr = created != null
                             ? '${created.hour.toString().padLeft(2, '0')}:${created.minute.toString().padLeft(2, '0')}'
                             : '';
@@ -1099,13 +1085,11 @@ if (doctor.isNotEmpty) 'Dr $doctor',
                         : ListView.builder(
                             itemCount: historyToday.length,
                             itemBuilder: (context, index) {
-                              final data = historyToday[index].data() as Map<String, dynamic>;
+                              final data = historyToday[index];
                               final patient = data['patientNom'] ?? 'Patient';
                               final doctor = (data['doctorName'] ?? data['doctorId'] ?? '').toString();
                               final assistant = (data['assistantName'] ?? data['assistantId'] ?? '').toString();
-                              final closed = data['closedAt'] is Timestamp
-                                  ? (data['closedAt'] as Timestamp).toDate()
-                                  : null;
+                              final closed = asDateOrNull(data['closedAt']);
                               final closedStr = closed != null
                                   ? '${closed.hour.toString().padLeft(2, '0')}:${closed.minute.toString().padLeft(2, '0')}'
                                   : '';
@@ -1143,16 +1127,16 @@ if (doctor.isNotEmpty) 'Dr $doctor',
   /// Ouvre la consultation guidee pour un patient deja en consultation.
   Future<void> _ouvrirConsultation(
     BuildContext context,
-    QueryDocumentSnapshot doc,
+    Map<String, dynamic> doc,
   ) async {
-    final data = doc.data() as Map<String, dynamic>;
+    final data = doc;
     await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => ConsultationPage(
           parentUid: widget.parentUid,
           profileId: widget.profileId,
-          waitingId: doc.id,
+          waitingId: doc['id'].toString(),
           waitingData: data,
         ),
       ),
@@ -1165,7 +1149,7 @@ if (doctor.isNotEmpty) 'Dr $doctor',
   /// patient changeait de liste, et rien ne lui disait quoi faire ensuite.
   Future<void> _demarrerEtConsulter(
     BuildContext context,
-    QueryDocumentSnapshot doc,
+    Map<String, dynamic> doc,
   ) async {
     await _startConsultation(context, doc);
     if (!context.mounted) return;
@@ -1174,13 +1158,13 @@ if (doctor.isNotEmpty) 'Dr $doctor',
 
   Future<void> _startConsultation(
     BuildContext context,
-    QueryDocumentSnapshot doc,
+    Map<String, dynamic> doc,
   ) async {
-    final data = doc.data() as Map<String, dynamic>;
+    final data = doc;
     await _waitingService.markInConsultation(
       parentUid: widget.parentUid,
       profileId: widget.profileId,
-      waitingId: doc.id,
+      waitingId: doc['id'].toString(),
       doctorId: (data['doctorId'] ?? '').toString(),
       assistantId: (data['assistantId'] ?? '').toString(),
     );
