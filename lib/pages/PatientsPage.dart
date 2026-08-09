@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+
+import '../services/api_service.dart';
 import 'patient_details_page.dart';
 import '../services/soft_delete.dart';
 
@@ -46,15 +47,12 @@ class _PatientsPageState extends State<PatientsPage> {
           ? [scheme.surface, scheme.surfaceVariant]
           : [Colors.white.withOpacity(0.92), const Color(0xFFF1F5F9).withOpacity(0.9)],
     );
-    final stream = FirebaseFirestore.instance
-        .collection('users')
-        .doc(widget.parentUid)
-        .collection('comptes')
-        .doc(widget.profileId)
-        .collection('patients')
-        .orderBy('createdAt', descending: true)
-        .limit(_limit)
-        .snapshots();
+    // La limite s'applique a l'affichage et non a la requete : le tri par
+    // createdAt cote serveur exclurait les dossiers qui n'ont pas ce champ,
+    // et ce sont les plus anciens.
+    final stream = ApiService.instance.patientsFlux(
+      profileId: widget.profileId,
+    );
 
     return Container(
       color: Colors.transparent,
@@ -120,18 +118,20 @@ class _PatientsPageState extends State<PatientsPage> {
             ),
           ),
           Expanded(
-            child: StreamBuilder<QuerySnapshot>(
+            child: StreamBuilder<List<Map<String, dynamic>>>(
               stream: stream,
               builder: (context, snap) {
                 if (!snap.hasData) {
                   return const Center(child: CircularProgressIndicator());
                 }
-                final docs = snap.data!.docs;
+                final tous = snap.data!;
+                final docs = tous.length > _limit
+                    ? tous.sublist(0, _limit)
+                    : tous;
                 final canLoadMore = docs.length >= _limit;
                 if (docs.isEmpty) return const Center(child: Text('Aucun patient'));
 
-                final filtered = docs.where((d) {
-                  final data = d.data() as Map<String, dynamic>;
+                final filtered = docs.where((data) {
                   if (isDeleted(data)) return false;
                   final nom = (data['nom'] ?? '').toString();
                   final prenom = (data['prenom'] ?? '').toString();
@@ -178,7 +178,7 @@ class _PatientsPageState extends State<PatientsPage> {
                           ),
                         );
                       }
-                      final d = filtered[i].data() as Map<String, dynamic>;
+                      final d = filtered[i];
                       final nom = d['nom'] ?? 'Patient';
                       final prenom = d['prenom'] ?? '';
                       final motif = d['motif'] ?? '';
@@ -221,7 +221,7 @@ class _PatientsPageState extends State<PatientsPage> {
                                   context,
                                   MaterialPageRoute(
                                     builder: (_) => PatientDetailsPage(
-                                      patientId: filtered[i].id,
+                                      patientId: filtered[i]['id'].toString(),
                                       patientName: nom,
                                       parentUid: widget.parentUid,
                                       ownerProfileId: widget.profileId,

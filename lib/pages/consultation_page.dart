@@ -1,4 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import 'patient_details_page.dart';
@@ -6,6 +5,7 @@ import '../core/clinical.dart';
 import '../core/coerce.dart';
 import '../core/format.dart' as fmt;
 import '../core/validate.dart' as v;
+import '../services/api_service.dart';
 import '../services/rendezvous_repository.dart';
 import '../services/waiting_service.dart';
 import '../ui/app_field.dart';
@@ -99,17 +99,18 @@ class _ConsultationPageState extends State<ConsultationPage> {
   static const _titres = ['Le patient', 'Examen', 'Conclusion', 'Clôture'];
 
   String get _patientId => asText(widget.waitingData['patientId']);
+
+  /// Le dossier, tenu a jour.
+  ///
+  /// Construit une seule fois : `dossierFlux` recharge a chaque changement,
+  /// et deux abonnements separes feraient deux requetes pour la meme donnee
+  /// a chaque ecriture.
+  late final Stream<Map<String, dynamic>?> _patientFlux = ApiService.instance
+      .dossierFlux(_patientId)
+      .map((d) => d['patient'] as Map<String, dynamic>?);
+
   String get _patientNom => asText(widget.waitingData['patientNom']);
   String get _patientPrenom => asText(widget.waitingData['patientPrenom']);
-
-  DocumentReference<Map<String, dynamic>> get _patientRef => FirebaseFirestore
-      .instance
-      .collection('users')
-      .doc(widget.parentUid)
-      .collection('comptes')
-      .doc(widget.profileId)
-      .collection('patients')
-      .doc(_patientId);
 
   @override
   void dispose() {
@@ -159,17 +160,14 @@ class _ConsultationPageState extends State<ConsultationPage> {
     if (poids == null && taille == null && notes.isEmpty) return;
 
     try {
-      final now = FieldValue.serverTimestamp();
-
       // Les mesures vont sur le dossier patient, pour que la prochaine
       // consultation les retrouve sans fouiller les formulaires.
-      final maj = <String, dynamic>{
+      await ApiService.instance.majPatient(_patientId, {
         if (poids != null) 'poids_actuel': poids,
         if (taille != null) 'taille': taille,
         if (_imcCtrl.text.isNotEmpty) 'imc': _imcCtrl.text,
-        'derniereConsultation': now,
-      };
-      await _patientRef.set(maj, SetOptions(merge: true));
+        'derniereConsultation': DateTime.now().toIso8601String(),
+      });
 
       // Et une trace horodatée dans les documents.
       //
@@ -177,7 +175,8 @@ class _ConsultationPageState extends State<ConsultationPage> {
       // typés pour que l'historique les relise sans deviner, et en texte
       // pour les vues qui affichent `contenu` tel quel. Reparser le texte
       // aurait suffi jusqu'au jour où quelqu'un change une virgule.
-      await _patientRef.collection('forms').add({
+      await ApiService.instance.creerDocument({
+        'patientId': _patientId,
         'type': 'Consultation',
         if (poids != null) 'poids': poids,
         if (taille != null) 'taille': taille,
@@ -189,10 +188,7 @@ class _ConsultationPageState extends State<ConsultationPage> {
           if (_imcCtrl.text.isNotEmpty) 'IMC : ${_imcCtrl.text}',
           if (notes.isNotEmpty) '', if (notes.isNotEmpty) notes,
         ].join('\n'),
-        'createdAt': now,
         'auteurProfileId': widget.profileId,
-        'parentUid': widget.parentUid,
-        'patientId': _patientId,
       });
 
       if (mounted) setState(() => _examenEnregistre = true);
@@ -206,53 +202,39 @@ class _ConsultationPageState extends State<ConsultationPage> {
     if (_cloture) return;
     setState(() => _cloture = true);
     try {
-      final doctorId = asText(widget.waitingData['doctorId']);
-      final assistantId = asText(widget.waitingData['assistantId']);
-      final faites = asInt(widget.waitingData['seancesEffectuees']) + 1;
-
-      // Incrémente la séance sur chaque copie du dossier.
-      final base = FirebaseFirestore.instance
-          .collection('users')
-          .doc(widget.parentUid)
-          .collection('comptes');
-      final profils = <String>{
-        widget.profileId,
-        if (doctorId.isNotEmpty) doctorId,
-        if (assistantId.isNotEmpty) assistantId,
-      };
-      final batch = FirebaseFirestore.instance.batch();
-      for (final p in profils) {
-        batch.set(
-          base.doc(p).collection('patients').doc(_patientId),
-          {'seancesEffectuees': FieldValue.increment(1)},
-          SetOptions(merge: true),
-        );
-      }
-      await batch.commit();
-
-      // Rien à sortir de la file quand la consultation part du dossier : la
-      // séance est décomptée ci-dessus, ce qui suffit à la clôture.
       final waitingId = widget.waitingId;
+
       if (waitingId != null) {
+        // Une transaction serveur : la seance est decomptee, le patient
+        // sort de la file, et le rendez-vous d'ou vient la visite est
+        // marque honore. C'etaient trois ecritures separees, dont un batch
+        // sur les copies du dossier — une seance pouvait etre comptee sans
+        // que le patient quitte la file du medecin.
         await WaitingService().closeEntryForAll(
           parentUid: widget.parentUid,
           profileId: widget.profileId,
           waitingId: waitingId,
-          doctorId: doctorId,
-          assistantId: assistantId,
+          doctorId: '',
+          assistantId: '',
           patientId: _patientId,
-          seancesEffectuees: faites,
+          seancesEffectuees: 1,
+        );
+      } else {
+        // Consultation lancee depuis le dossier : le patient n'est passe
+        // par aucune file, il n'y a rien a en sortir. Seule la seance se
+        // decompte.
+        final faites = asInt(widget.waitingData['seancesEffectuees']) + 1;
+        await ApiService.instance.majPatient(_patientId, {
+          'seancesEffectuees': faites,
+        });
+
+        await RendezVousRepository().honorerDepuisVisite(
+          parentUid: widget.parentUid,
+          rdvId: asTextOrNull(widget.waitingData['rdvId']),
+          doctorId: '',
+          assistantId: '',
         );
       }
-
-      // Referme le rendez-vous d'où vient la visite. Sans ce retour, un
-      // rendez-vous honoré restait affiché « à venir » indéfiniment.
-      await RendezVousRepository().honorerDepuisVisite(
-        parentUid: widget.parentUid,
-        rdvId: asTextOrNull(widget.waitingData['rdvId']),
-        doctorId: doctorId,
-        assistantId: assistantId,
-      );
 
       if (!mounted) return;
       Navigator.pop(context);
@@ -374,10 +356,10 @@ class _ConsultationPageState extends State<ConsultationPage> {
   // ---- Étape 1 : qui est le patient ----
 
   Widget _etapePatient() {
-    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: _patientRef.snapshots(),
+    return StreamBuilder<Map<String, dynamic>?>(
+      stream: _patientFlux,
       builder: (context, snap) {
-        final data = snap.data?.data() ?? const <String, dynamic>{};
+        final data = snap.data ?? const <String, dynamic>{};
         final reglement = Reglement.fromPatient(data);
         final seances = Seances.fromPatient(data);
         final derniere = asDateOrNull(data['derniereConsultation']);
@@ -552,19 +534,14 @@ class _ConsultationPageState extends State<ConsultationPage> {
   // ---- Étape 3 : conclusion ----
 
   Widget _etapeConclusion() {
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+    return StreamBuilder<List<Map<String, dynamic>>>(
       // Documents du jour uniquement : ce qui compte est ce qui a été
       // produit pendant CETTE consultation, pas l'historique.
-      stream: _patientRef
-          .collection('forms')
-          .orderBy('createdAt', descending: true)
-          .limit(20)
-          .snapshots(),
+      stream: ApiService.instance.documentsFlux(patientId: _patientId),
       builder: (context, snap) {
         final aujourdhui = startOfDay(DateTime.now());
         final faitsAujourdhui = <String>{};
-        for (final d in snap.data?.docs ?? const []) {
-          final data = d.data();
+        for (final data in snap.data ?? const <Map<String, dynamic>>[]) {
           final cree = asDateOrNull(data['createdAt']);
           if (cree == null || cree.isBefore(aujourdhui)) continue;
           faitsAujourdhui.add(asText(data['type']));
@@ -604,10 +581,10 @@ class _ConsultationPageState extends State<ConsultationPage> {
   // ---- Étape 4 : clôture ----
 
   Widget _etapeCloture() {
-    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: _patientRef.snapshots(),
+    return StreamBuilder<Map<String, dynamic>?>(
+      stream: _patientFlux,
       builder: (context, snap) {
-        final data = snap.data?.data() ?? const <String, dynamic>{};
+        final data = snap.data ?? const <String, dynamic>{};
         final seances = Seances.fromPatient(data);
         final reglement = Reglement.fromPatient(data);
         final apres = Seances(

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+
+import '../services/api_service.dart';
 
 class MedecinsCards extends StatelessWidget {
   final String parentUid;
@@ -9,27 +10,23 @@ class MedecinsCards extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Inclure les rôles médecin et médecin principal
-    final stream = FirebaseFirestore.instance
-        .collection('users')
-        .doc(parentUid)
-        .collection('comptes')
-        .where('role', whereIn: ['medecin', 'medecin_principal'])
-        .snapshots();
-
-    return StreamBuilder<QuerySnapshot>(
-      stream: stream,
+    // Le filtrage par role se fait ici : la liste des profils d'un cabinet
+    // tient en quelques elements, une route dediee serait du zele.
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      stream: ApiService.instance.profilsFlux(),
       builder: (context, snap) {
         if (!snap.hasData) return Center(child: CircularProgressIndicator());
-        final docs = snap.data!.docs;
+        final docs = snap.data!
+            .where((p) =>
+                p['role'] == 'medecin' || p['role'] == 'medecin_principal')
+            .toList();
         if (docs.isEmpty) return Center(child: Text('Aucun médecin.'));
         return Wrap(
           spacing: 12,
           runSpacing: 12,
-          children: docs.map((d) {
-            final data = d.data() as Map<String, dynamic>;
+          children: docs.map((data) {
             return GestureDetector(
-              onTap: () => onTap(d.id, data),
+              onTap: () => onTap((data['id'] ?? '').toString(), data),
               child: Card(
                 elevation: 3,
                 child: Container(
