@@ -191,6 +191,15 @@ class ApiService {
     Map<String, dynamic> champs,
   ) async => _objet(await _api.post('/forms', champs));
 
+  /// Modifie un document existant.
+  ///
+  /// Le type n'est pas modifiable : il decide de la mise en page et de ce que
+  /// la consultation considere comme redige aujourd'hui.
+  Future<Map<String, dynamic>> majDocument(
+    String id,
+    Map<String, dynamic> champs,
+  ) async => _objet(await _api.put('/forms/$id', champs));
+
   Future<void> supprimerDocument(String id) => _api.delete('/forms/$id');
 
   // -----------------------------------------------------------------

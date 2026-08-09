@@ -1628,7 +1628,7 @@ class _PatientsTabState extends State<_PatientsTab> {
           ),
         ),
         Expanded(
-          child: StreamBuilder<QuerySnapshot>(
+          child: StreamBuilder<List<Map<String, dynamic>>>(
             stream: stream,
             builder: (context, snapshot) {
               if (snapshot.hasError) {
@@ -1641,7 +1641,7 @@ class _PatientsTabState extends State<_PatientsTab> {
                 return const Center(child: CircularProgressIndicator());
               }
 
-              final patients = snapshot.data!.docs;
+              final patients = snapshot.data!;
               final canLoadMore = patients.length >= _limit;
 
               if (patients.isEmpty) {
@@ -1696,7 +1696,7 @@ class _PatientsTabState extends State<_PatientsTab> {
                       );
                     }
                     final patient = filtered[index];
-                    final data = patient.data() as Map<String, dynamic>;
+                    final data = patient;
 
                     final nom = (data['nom'] ?? 'Sans nom').toString();
                     final motif = (data['motif'] ?? 'Motif non renseigne')
@@ -1836,7 +1836,7 @@ class _PatientsTabState extends State<_PatientsTab> {
                                       context,
                                       MaterialPageRoute(
                                         builder: (_) => PatientDetailsPage(
-                                          patientId: patient.id,
+                                          patientId: patient['id'].toString(),
                                           patientName: nom,
                                           parentUid: widget.parentUid,
                                           ownerProfileId: widget.profileId,
@@ -1851,13 +1851,13 @@ class _PatientsTabState extends State<_PatientsTab> {
                                   color: Colors.orange.shade700,
                                   onPressed:
                                       _addingWaitingPatientIds.contains(
-                                        patient.id,
+                                        patient['id'].toString(),
                                       )
                                       ? null
                                       : () => _ajouterEnSalleAttente(
                                           context,
                                           data,
-                                          patient.id,
+                                          patient['id'].toString(),
                                         ),
                                   tooltip: 'Mettre en salle d\'attente',
                                 ),
@@ -1865,10 +1865,10 @@ class _PatientsTabState extends State<_PatientsTab> {
                                   icon: const Icon(Icons.event_available),
                                   color: secondary,
                                   onPressed: () =>
-                                      widget.onPlanifier(data, patient.id),
+                                      widget.onPlanifier(data, patient['id'].toString()),
                                   tooltip: 'Planifier un rendez-vous',
                                 ),
-                                if (_deletingPatientIds.contains(patient.id))
+                                if (_deletingPatientIds.contains(patient['id'].toString()))
                                   const Padding(
                                     padding: EdgeInsets.all(10),
                                     child: SizedBox(
@@ -1885,7 +1885,7 @@ class _PatientsTabState extends State<_PatientsTab> {
                                     color: scheme.error,
                                     onPressed: () => _deletePatient(
                                       context,
-                                      patient.id,
+                                      patient['id'].toString(),
                                       data,
                                     ),
                                     tooltip: 'Supprimer patient',

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import '../core/coerce.dart';
 import '../services/firestore_service.dart';
 import '../ui/fluent_card.dart';
 import '../ui/empty_state.dart';
@@ -28,7 +28,7 @@ class _AppointmentsPageState extends State<AppointmentsPage> {
   @override
   Widget build(BuildContext context) {
     final fromDate = _showAll ? null : _recentCutoff();
-    return StreamBuilder(
+    return StreamBuilder<List<Map<String, dynamic>>>(
       stream: _service.rendezVousStream(
         parentUid: widget.parentUid,
         profileId: widget.profileId,
@@ -42,7 +42,7 @@ class _AppointmentsPageState extends State<AppointmentsPage> {
         if (!snap.hasData) {
           return const Center(child: CircularProgressIndicator());
         }
-        final docs = snap.data!.docs;
+        final docs = snap.data!;
         final canLoadMore = docs.length >= _limit;
 
         return Column(
@@ -84,12 +84,13 @@ class _AppointmentsPageState extends State<AppointmentsPage> {
                             ),
                           );
                         }
-                        final d = docs[i].data() as Map<String, dynamic>;
+                        final d = docs[i];
                         final patient = d['patientNom'] ?? 'Patient';
                         final medecin = d['doctorId'] ?? '';
                         final motif = d['motif'] ?? '';
-                        final dt =
-                            d['datetime'] is Timestamp ? (d['datetime'] as Timestamp).toDate() : null;
+                        // Le backend rend une date ISO ; asDateOrNull
+                        // accepte encore les Timestamp des anciens ecrans.
+                        final dt = asDateOrNull(d['datetime']);
                         final formatted = dt != null
                             ? '${dt.day}/${dt.month}/${dt.year} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}'
                             : 'Date à définir';

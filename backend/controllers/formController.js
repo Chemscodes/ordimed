@@ -62,6 +62,51 @@ exports.creer = async (req, res) => {
   return res.status(201).json(form.toJSON());
 };
 
+/**
+ * Modifie un document existant.
+ *
+ * Firestore n'avait pas d'equivalent : chaque formulaire etant duplique sous
+ * chaque profil sans identite partagee, l'app devait retrouver « le meme »
+ * document dans les copies en comparant auteur, type, contenu et horodatage
+ * a deux minutes pres. Un identifiant unique supprime tout cela.
+ */
+exports.modifier = async (req, res) => {
+  const maj = c.sansIndefinis({
+    contenu: req.body.contenu !== undefined ? c.asText(req.body.contenu) : undefined,
+    notes: req.body.notes !== undefined ? c.asText(req.body.notes) : undefined,
+    poids: req.body.poids !== undefined ? c.asNumberOrNull(req.body.poids) : undefined,
+    taille: req.body.taille !== undefined ? c.asNumberOrNull(req.body.taille) : undefined,
+    imc: req.body.imc !== undefined ? c.asText(req.body.imc) : undefined,
+    sections: req.body.sections,
+    prescriptions: req.body.prescriptions,
+    examens: req.body.examens,
+    seanceNumero:
+      req.body.seanceNumero !== undefined
+        ? c.asText(req.body.seanceNumero)
+        : undefined,
+    note_de_seance:
+      req.body.note_de_seance !== undefined
+        ? c.asText(req.body.note_de_seance)
+        : undefined,
+  });
+
+  // Le type ne se modifie pas : il decide de la mise en page et de ce que
+  // la consultation considere comme redige. Le changer transformerait une
+  // ordonnance en bilan dans l'historique.
+  const form = await Form.findOneAndUpdate(
+    scope(req, { _id: req.params.id }),
+    { $set: maj },
+    { new: true, runValidators: true }
+  );
+  if (!form) return res.status(404).json({ error: 'Document introuvable' });
+
+  diffuser(req.parentUid, 'forms', 'maj', {
+    id: String(form._id),
+    patientId: String(form.patientId),
+  });
+  return res.json(form.toJSON());
+};
+
 exports.supprimer = async (req, res) => {
   const form = await Form.findOneAndDelete(scope(req, { _id: req.params.id }));
   if (!form) return res.status(404).json({ error: 'Document introuvable' });

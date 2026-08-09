@@ -10,6 +10,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../services/api_service.dart';
 import '../services/firestore_service.dart';
 import '../ui/fluent_button.dart';
 import 'consultation_page.dart';
@@ -188,7 +189,7 @@ class PatientDetailsPage extends StatelessWidget {
           ),
         ),
       ),
-      body: StreamBuilder<DocumentSnapshot>(
+      body: StreamBuilder<Map<String, dynamic>?>(
         stream: FirestoreService().patientDoc(
           parentUid: parentUid,
           profileId: ownerProfileId,
@@ -199,8 +200,7 @@ class PatientDetailsPage extends StatelessWidget {
             return const Center(child: CircularProgressIndicator());
           }
 
-          final patientData =
-              patientSnap.data!.data() as Map<String, dynamic>? ?? {};
+          final patientData = patientSnap.data ?? <String, dynamic>{};
           final doctorId = (patientData['doctorId'] ?? '').toString().trim();
           final assistantId = (patientData['assistantId'] ?? '')
               .toString()
@@ -301,78 +301,30 @@ class PatientDetailsPage extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  StreamBuilder<QuerySnapshot>(
+                  StreamBuilder<List<Map<String, dynamic>>>(
                     stream: FirestoreService().patientForms(
                       parentUid: parentUid,
                       profileId: ownerProfileId,
                       patientId: patientId,
                     ),
                     builder: (context, snapshot) {
-                      final baseForms = snapshot.data?.docs ?? [];
+                      // Ce bloc fusionnait trois sources : les documents du
+                      // profil courant, ceux de la copie assistant, et une
+                      // requete collectionGroup pour rattraper le reste.
+                      // Firestore ecrivait chaque formulaire sous chaque
+                      // profil, et il fallait recoller les morceaux en
+                      // dedoublonnant sur le chemin du document.
+                      //
+                      // Il n'y a plus qu'un document par formulaire : la
+                      // fusion n'a plus d'objet.
+                      if (!snapshot.hasData) {
+                        return const Padding(
+                          padding: EdgeInsets.all(24),
+                          child: Center(child: CircularProgressIndicator()),
+                        );
+                      }
 
-                      final assistantFuture = assistantId.isNotEmpty
-                          ? FirebaseFirestore.instance
-                                .collection('users')
-                                .doc(parentUid)
-                                .collection('comptes')
-                                .doc(assistantId)
-                                .collection('patients')
-                                .doc(patientId)
-                                .collection('forms')
-                                .get()
-                          : Future<QuerySnapshot<Map<String, dynamic>>?>.value(
-                              null,
-                            );
-
-                      final cgFuture = FirebaseFirestore.instance
-                          .collectionGroup('forms')
-                          .where('parentUid', isEqualTo: parentUid)
-                          .where('patientId', isEqualTo: patientId)
-                          .get()
-                          .then(
-                            (v) => v as QuerySnapshot<Map<String, dynamic>>,
-                          );
-
-                      return FutureBuilder<
-                        List<QuerySnapshot<Map<String, dynamic>>?>
-                      >(
-                        future:
-                            Future.wait<QuerySnapshot<Map<String, dynamic>>?>([
-                              assistantFuture,
-                              cgFuture,
-                            ]),
-                        builder: (context, snaps) {
-                          if (!snapshot.hasData &&
-                              (snaps.connectionState ==
-                                  ConnectionState.waiting)) {
-                            return const Padding(
-                              padding: EdgeInsets.all(24),
-                              child: Center(child: CircularProgressIndicator()),
-                            );
-                          }
-
-                          final assistantSnap =
-                              (snaps.data != null && snaps.data!.isNotEmpty)
-                              ? snaps.data![0]
-                              : null;
-                          final cgSnap =
-                              (snaps.data != null && snaps.data!.length > 1)
-                              ? snaps.data![1]
-                              : null;
-                          final assistantForms =
-                              assistantSnap?.docs ?? <QueryDocumentSnapshot>[];
-                          final cgForms =
-                              cgSnap?.docs ?? <QueryDocumentSnapshot>[];
-
-                          final mergedMap = <String, QueryDocumentSnapshot>{};
-                          for (final d in [
-                            ...baseForms,
-                            ...assistantForms,
-                            ...cgForms,
-                          ]) {
-                            mergedMap[d.reference.path] = d;
-                          }
-                          final merged = mergedMap.values.toList();
+                      final merged = snapshot.data!;
 
                           if (merged.isEmpty) {
                             return const Padding(
@@ -382,8 +334,7 @@ class PatientDetailsPage extends StatelessWidget {
                           }
 
                           Map<String, dynamic>? latestMedSections;
-                          for (final doc in merged.reversed) {
-                            final data = doc.data() as Map<String, dynamic>;
+                          for (final data in merged.reversed) {
                             final type = (data['type'] ?? '')
                                 .toString()
                                 .toLowerCase();
@@ -657,8 +608,6 @@ class PatientDetailsPage extends StatelessWidget {
                               ),
                             ],
                           );
-                        },
-                      );
                     },
                   ),
                 ],
@@ -3348,7 +3297,7 @@ class PatientDetailsPage extends StatelessWidget {
 
   Future<void> _openEditFormDialog(
     BuildContext context,
-    QueryDocumentSnapshot doc,
+    Map<String, dynamic> doc,
     Map<String, dynamic> data,
     Map<String, dynamic> patientData,
   ) async {
@@ -3448,7 +3397,7 @@ class PatientDetailsPage extends StatelessWidget {
     sectionCtrls.values.forEach((c) => c.dispose());
 
     try {
-      await _updateFormCopies(doc, data, updates, patientData);
+      await _mettreAJourDocument(doc, updates);
       if (context.mounted) {
         ScaffoldMessenger.of(
           context,
@@ -3463,108 +3412,22 @@ class PatientDetailsPage extends StatelessWidget {
     }
   }
 
-  Future<void> _updateFormCopies(
-    QueryDocumentSnapshot doc,
-    Map<String, dynamic> originalData,
+  /// Met a jour un document medical.
+  ///
+  /// Cette methode faisait cent lignes. Firestore ecrivait chaque formulaire
+  /// sous chaque profil sans identite partagee : pour modifier « le meme »
+  /// document, il fallait le retrouver dans les copies en comparant l'auteur,
+  /// le type, le contenu et l'horodatage a deux minutes pres, puis ecrire
+  /// dans toutes les references trouvees.
+  ///
+  /// Un document a maintenant un identifiant. Il n'y a plus rien a apparier.
+  Future<void> _mettreAJourDocument(
+    Map<String, dynamic> doc,
     Map<String, dynamic> updates,
-    Map<String, dynamic> patientData,
   ) async {
-    final originalType = (originalData['type'] ?? '').toString();
-    final auteurId = (originalData['auteurProfileId'] ?? '').toString();
-    final originalContenu = (originalData['contenu'] ?? '').toString().trim();
-    final originalSections = (originalData['sections'] as Map?)
-        ?.cast<String, dynamic>();
-    final originalCreated = originalData['createdAt'];
-    DateTime? createdAt;
-    if (originalCreated is Timestamp) {
-      createdAt = originalCreated.toDate();
-    } else if (originalCreated is DateTime) {
-      createdAt = originalCreated;
-    }
-
-    final existingFormId = (originalData['formId'] ?? '').toString().trim();
-    final resolvedFormId = existingFormId.isEmpty
-        ? FirebaseFirestore.instance.collection('tmp').doc().id
-        : existingFormId;
-    updates['formId'] = resolvedFormId;
-
-    final doctorId = (patientData['doctorId'] ?? '').toString();
-    final assistantId = (patientData['assistantId'] ?? '').toString();
-    final profileIds = <String>{
-      ownerProfileId,
-      doctorId,
-      assistantId,
-      'medecin_principal',
-    }..removeWhere((id) => id.isEmpty);
-
-    final base = FirebaseFirestore.instance
-        .collection('users')
-        .doc(parentUid)
-        .collection('comptes');
-
-    final docs = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
-    for (final id in profileIds) {
-      try {
-        final snap = await base
-            .doc(id)
-            .collection('patients')
-            .doc(patientId)
-            .collection('forms')
-            .get();
-        docs.addAll(snap.docs);
-      } catch (_) {}
-    }
-
-    String _asString(dynamic v) => v?.toString().trim() ?? '';
-
-    bool sectionsMatch(dynamic other) {
-      if (originalSections == null || originalSections.isEmpty) return false;
-      if (other is! Map) return false;
-      if (other.length != originalSections.length) return false;
-      for (final entry in originalSections.entries) {
-        final key = entry.key;
-        if (_asString(entry.value) != _asString(other[key])) return false;
-      }
-      return true;
-    }
-
-    bool timeMatch(dynamic otherCreated) {
-      if (createdAt == null) return false;
-      DateTime? other;
-      if (otherCreated is Timestamp) other = otherCreated.toDate();
-      if (otherCreated is DateTime) other = otherCreated;
-      if (other == null) return false;
-      final diff = createdAt.difference(other).abs();
-      return diff.inSeconds <= 120;
-    }
-
-    final refs = <DocumentReference>{doc.reference};
-    for (final d in docs) {
-      if (d.reference.path == doc.reference.path) continue;
-      final data = d.data();
-      if ((data['auteurProfileId'] ?? '').toString() != auteurId) continue;
-      if ((data['type'] ?? '').toString() != originalType) continue;
-      final otherFormId = (data['formId'] ?? '').toString().trim();
-      if (existingFormId.isNotEmpty) {
-        if (otherFormId != existingFormId) continue;
-      } else {
-        final contentMatch =
-            originalContenu.isNotEmpty &&
-            _asString(data['contenu']) == originalContenu;
-        final matched =
-            contentMatch ||
-            sectionsMatch(data['sections']) ||
-            timeMatch(data['createdAt']);
-        if (!matched) continue;
-      }
-      refs.add(d.reference);
-    }
-
-    final batch = FirebaseFirestore.instance.batch();
-    for (final ref in refs) {
-      batch.set(ref, updates, SetOptions(merge: true));
-    }
-    await batch.commit();
+    final id = (doc['id'] ?? '').toString();
+    if (id.isEmpty) return;
+    await ApiService.instance.majDocument(id, updates);
   }
 
   Future<List<String>> _resolveDoctorPrototypeFields(
@@ -4167,7 +4030,7 @@ String _formatDateHeader(dynamic ts) {
 }
 
 Widget _renderFormGroups(
-  List<QueryDocumentSnapshot> docs,
+  List<Map<String, dynamic>> docs,
   TextStyle titleStyle,
   TextStyle contentStyle,
   Map<String, dynamic> patientData, {
@@ -4178,7 +4041,7 @@ Widget _renderFormGroups(
   required String doctorLabel,
   required String assistantLabel,
   required String ownerLabel,
-  required void Function(QueryDocumentSnapshot doc, Map<String, dynamic> data)
+  required void Function(Map<String, dynamic> doc, Map<String, dynamic> data)
   onEdit,
 }) {
   final scheme = Theme.of(context).colorScheme;
@@ -4197,25 +4060,23 @@ Widget _renderFormGroups(
       : Colors.black.withOpacity(0.08);
   final shadowColor = Colors.black.withOpacity(isDark ? 0.35 : 0.1);
 
+  // asDateOrNull accepte l'ISO du backend comme les Timestamp encore
+  // presents dans les donnees importees.
   final sorted = [...docs]
     ..sort((a, b) {
-      final ad = (a.data() as Map<String, dynamic>)['createdAt'];
-      final bd = (b.data() as Map<String, dynamic>)['createdAt'];
-      final at = ad is Timestamp
-          ? ad.toDate()
-          : DateTime.fromMillisecondsSinceEpoch(0);
-      final bt = bd is Timestamp
-          ? bd.toDate()
-          : DateTime.fromMillisecondsSinceEpoch(0);
+      final at = asDateOrNull(a['createdAt']) ??
+          DateTime.fromMillisecondsSinceEpoch(0);
+      final bt = asDateOrNull(b['createdAt']) ??
+          DateTime.fromMillisecondsSinceEpoch(0);
       return bt.compareTo(at);
     });
 
-  final medForms = <QueryDocumentSnapshot>[];
-  final ordonnanceForms = <QueryDocumentSnapshot>[];
-  final bilanForms = <QueryDocumentSnapshot>[];
-  final otherForms = <QueryDocumentSnapshot>[];
+  final medForms = <Map<String, dynamic>>[];
+  final ordonnanceForms = <Map<String, dynamic>>[];
+  final bilanForms = <Map<String, dynamic>>[];
+  final otherForms = <Map<String, dynamic>>[];
   for (final f in sorted) {
-    final data = f.data() as Map<String, dynamic>;
+    final data = f;
     final type = (data['type'] ?? '').toString().toLowerCase();
     if (type.contains('ordonnance')) {
       ordonnanceForms.add(f);
@@ -4239,13 +4100,17 @@ Widget _renderFormGroups(
     assistantLabel: assistantLabel,
   );
 
-  bool canEditForm(QueryDocumentSnapshot doc, Map<String, dynamic> data) {
+  bool canEditForm(Map<String, dynamic> doc, Map<String, dynamic> data) {
     final auteur = (data['auteurProfileId'] ?? '').toString();
     if (auteur.isEmpty || auteur != ownerProfileId) return false;
+    // Une ordonnance et un bilan sont des pieces remises au patient : les
+    // rouvrir apres coup ferait diverger le papier et le dossier.
     final type = (data['type'] ?? '').toString().toLowerCase();
     if (type.contains('ordonnance') || type.contains('bilan')) return false;
-    final path = doc.reference.path;
-    if (!path.contains('/comptes/$ownerProfileId/')) return false;
+    // Il y avait ici un second controle, sur le chemin Firestore du
+    // document : il verifiait que la copie modifiee etait bien celle du
+    // profil courant. Sans duplication, ce chemin n'existe plus, et
+    // l'appartenance se lit deja dans `auteurProfileId` ci-dessus.
     return true;
   }
 
@@ -4297,14 +4162,14 @@ Widget _renderFormGroups(
   }
 
   Widget buildFormCard(
-    QueryDocumentSnapshot doc, {
+    Map<String, dynamic> doc, {
     required String title,
     required Map<String, String> fallbackFields,
     required String emptyLabel,
     bool allowEdit = true,
     String? metaLine,
   }) {
-    final data = doc.data() as Map<String, dynamic>;
+    final data = doc;
     final formType = (data['type'] ?? '').toString().toLowerCase();
     final noteDeSeance = (data['note_de_seance'] ?? data['noteSeance'] ?? '')
         .toString()
@@ -4493,7 +4358,7 @@ Widget _renderFormGroups(
     );
   }
 
-  void showFormsDialog(String title, List<QueryDocumentSnapshot> forms) {
+  void showFormsDialog(String title, List<Map<String, dynamic>> forms) {
     if (forms.isEmpty) return;
     showDialog<void>(
       context: context,
@@ -4504,7 +4369,7 @@ Widget _renderFormGroups(
           height: 520,
           child: ListView(
             children: forms.map((doc) {
-              final data = doc.data() as Map<String, dynamic>;
+              final data = doc;
               final formTitle = (data['type'] ?? title).toString();
               final meta = _formMetaLine(data);
               return buildFormCard(
@@ -4561,7 +4426,7 @@ Widget _renderFormGroups(
             ),
           ),
         ...medForms.map((doc) {
-          final data = doc.data() as Map<String, dynamic>;
+          final data = doc;
           return buildFormCard(
             doc,
             title: (data['type'] ?? 'Formulaire').toString(),
@@ -4576,7 +4441,7 @@ Widget _renderFormGroups(
         Text('Formulaires assistant / notes', style: titleStyle),
         const SizedBox(height: 8),
         ...otherForms.map((doc) {
-          final data = doc.data() as Map<String, dynamic>;
+          final data = doc;
           final rawType = (data['type'] ?? '').toString().trim();
           final displayType =
               rawType.isEmpty || rawType.toLowerCase().contains('dossier')

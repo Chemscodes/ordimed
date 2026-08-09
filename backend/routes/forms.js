@@ -11,6 +11,7 @@ router.use(exigeAuth);
 
 router.get('/', asyncHandler(ctrl.lister));
 router.post('/', asyncHandler(ctrl.creer));
+router.put('/:id', asyncHandler(ctrl.modifier));
 router.delete('/:id', asyncHandler(ctrl.supprimer));
 
 module.exports = router;

@@ -517,7 +517,7 @@ class _PatientsTabState extends State<_PatientsTab> {
           : [Colors.white.withOpacity(0.92), const Color(0xFFF1F5F9).withOpacity(0.9)],
     );
 
-    return StreamBuilder<QuerySnapshot>(
+    return StreamBuilder<List<Map<String, dynamic>>>(
       stream: widget.service.patientsStream(
         parentUid: widget.parentUid,
         profileId: widget.profileId,
@@ -535,7 +535,7 @@ class _PatientsTabState extends State<_PatientsTab> {
           return const Center(child: CircularProgressIndicator());
         }
 
-        final patients = snapshot.data!.docs;
+        final patients = snapshot.data!;
         final canLoadMore = patients.length >= _limit;
 
         if (patients.isEmpty) {
@@ -548,7 +548,7 @@ class _PatientsTabState extends State<_PatientsTab> {
         }
 
         final filtered = patients.where((p) {
-          final data = p.data() as Map<String, dynamic>;
+          final data = p;
           if (isDeleted(data)) return false;
           final nom = (data['nom'] ?? '').toString();
           final prenom = (data['prenom'] ?? '').toString();
@@ -690,7 +690,7 @@ class _PatientsTabState extends State<_PatientsTab> {
                       );
                     }
                     final patient = filtered[index];
-                    final data = patient.data() as Map<String, dynamic>;
+                    final data = patient;
 
                     final nom = data['nom'] ?? 'Sans nom';
                     final motif = data['motif'] ?? 'Motif non renseigne';
@@ -802,7 +802,7 @@ class _PatientsTabState extends State<_PatientsTab> {
                                       context,
                                       MaterialPageRoute(
                                         builder: (_) => PatientDetailsPage(
-                                          patientId: patient.id,
+                                          patientId: patient['id'].toString(),
                                           patientName: nom,
                                           parentUid: widget.parentUid,
                                           ownerProfileId: widget.profileId,

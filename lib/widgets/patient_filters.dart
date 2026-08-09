@@ -1,4 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import '../core/clinical.dart';
@@ -117,14 +116,9 @@ class PatientQuery {
         tel.contains(besoin);
   }
 
-  /// Filtre une liste de documents Firestore.
-  List<QueryDocumentSnapshot> filtrer(List<QueryDocumentSnapshot> docs) {
-    return docs.where((d) {
-      final data = d.data();
-      if (data is! Map<String, dynamic>) return false;
-      return accepte(data);
-    }).toList();
-  }
+  /// Filtre une liste de dossiers.
+  List<Map<String, dynamic>> filtrer(List<Map<String, dynamic>> patients) =>
+      patients.where(accepte).toList();
 }
 
 /// Barre de filtres : pastilles rapides et sélection du médecin.

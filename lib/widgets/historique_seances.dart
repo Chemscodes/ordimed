@@ -1,4 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import '../core/coerce.dart';
@@ -78,7 +77,7 @@ class HistoriqueSeances extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<QuerySnapshot>(
+    return StreamBuilder<List<Map<String, dynamic>>>(
       stream: FirestoreService().patientForms(
         parentUid: parentUid,
         profileId: profileId,
@@ -96,8 +95,7 @@ class HistoriqueSeances extends StatelessWidget {
         }
 
         final seances =
-            snap.data!.docs
-                .map((d) => d.data() as Map<String, dynamic>)
+            snap.data!
                 .where((d) => asText(d['type']) == 'Consultation')
                 .map(Seance.fromForm)
                 .where((s) => !s.estVide)

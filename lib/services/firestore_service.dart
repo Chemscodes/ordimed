@@ -1,134 +1,92 @@
-import 'dart:async';
+import 'api_service.dart';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_core/firebase_core.dart';
-
+/// Les lectures du cabinet, désormais contre le backend.
+///
+/// Le nom reste `FirestoreService` le temps de la migration : neuf fichiers
+/// l'appellent, et le renommer en même temps qu'on change son contenu
+/// mélangerait deux modifications dans le même diff. Il deviendra
+/// `CabinetService` une fois Firebase parti.
+///
+/// Ce qui change pour les appelants : les flux rendent des
+/// `List<Map<String, dynamic>>` au lieu de `QuerySnapshot`. Un
+/// `QuerySnapshot` ne se fabrique pas hors de Firestore, et écrire une
+/// fausse classe qui l'imite aurait figé une forme Firestore dans une app
+/// qui n'en a plus. Concrètement, `snap.data!.docs` devient `snap.data!`,
+/// et `doc.data() as Map` disparaît.
+///
+/// L'identifiant du document, lu par `doc.id`, se lit maintenant
+/// `doc['id']` : le backend le pose dans chaque objet renvoyé.
 class FirestoreService {
   FirestoreService._internal();
+
   static final FirestoreService _instance = FirestoreService._internal();
+
   factory FirestoreService() => _instance;
 
-  final _db = FirebaseFirestore.instance;
+  final _api = ApiService.instance;
 
-  Stream<QuerySnapshot> patientsStream({
+  /// Les patients d'un profil.
+  ///
+  /// `parentUid` n'est plus utilisé : le cabinet est déduit du jeton, et le
+  /// backend refuse tout ce qui sort du sien. Le paramètre reste pour ne
+  /// pas toucher aux appelants dans le même commit — il disparaîtra avec le
+  /// dernier d'entre eux.
+  Stream<List<Map<String, dynamic>>> patientsStream({
     required String parentUid,
     required String profileId,
     bool orderByCreated = false,
     int? limit,
     DateTime? createdAfter,
   }) {
-    Query<Map<String, dynamic>> ref = _db
-        .collection('users')
-        .doc(parentUid)
-        .collection('comptes')
-        .doc(profileId)
-        .collection('patients');
-    if (createdAfter != null) {
-      ref = ref.where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(createdAfter));
-      orderByCreated = true;
-    }
-    if (orderByCreated) {
-      ref = ref.orderBy('createdAt', descending: true);
-    }
-    if (limit != null) {
-      ref = ref.limit(limit);
-    }
-    return ref.snapshots();
+    return _api.patientsFlux(profileId: profileId).map((liste) {
+      // Le filtrage par date se fait ici et non dans la requête : les
+      // dossiers antérieurs à l'introduction de `createdAt` n'ont pas le
+      // champ, et une contrainte serveur les exclurait tous en silence.
+      if (createdAfter == null) return liste;
+      return liste.where((p) {
+        final d = DateTime.tryParse('${p['createdAt']}');
+        return d != null && !d.isBefore(createdAfter);
+      }).toList();
+    });
   }
 
-  /// Stream of all patients (collectionGroup).
-  /// Defaults to parentUid filter; falls back if the index is missing.
-  Stream<QuerySnapshot<Map<String, dynamic>>> allPatientsStream({
+  /// Tous les patients du cabinet.
+  ///
+  /// Remplace le `collectionGroup` et son repli sur index manquant : la
+  /// hiérarchie Firestore a disparu, c'est devenu une requête ordinaire.
+  Stream<List<Map<String, dynamic>>> allPatientsStream({
     required String parentUid,
     bool includeLegacy = false,
-  }) {
-    final baseQuery = _db.collectionGroup('patients');
-    if (includeLegacy) {
-      return baseQuery.snapshots();
-    }
-    final filteredQuery = baseQuery.where('parentUid', isEqualTo: parentUid);
-    final controller = StreamController<QuerySnapshot<Map<String, dynamic>>>.broadcast();
-    StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? sub;
-    var fellBack = false;
+  }) => _api.patientsFlux();
 
-    void listenTo(Query<Map<String, dynamic>> query) {
-      sub?.cancel();
-      sub = query.snapshots().listen(
-        controller.add,
-        onError: (error, stack) {
-          if (!fellBack &&
-              error is FirebaseException &&
-              error.code == 'failed-precondition') {
-            fellBack = true;
-            listenTo(baseQuery);
-            return;
-          }
-          controller.addError(error, stack);
-        },
-      );
-    }
-
-    controller.onListen = () => listenTo(filteredQuery);
-    controller.onCancel = () {
-      sub?.cancel();
-      controller.close();
-    };
-    return controller.stream;
-  }
-
-
-  Stream<QuerySnapshot> rendezVousStream({
+  Stream<List<Map<String, dynamic>>> rendezVousStream({
     required String parentUid,
     required String profileId,
     int? limit,
     DateTime? fromDate,
   }) {
-    Query<Map<String, dynamic>> ref = _db
-        .collection('users')
-        .doc(parentUid)
-        .collection('comptes')
-        .doc(profileId)
-        .collection('rendezvous');
-    if (fromDate != null) {
-      ref = ref.where('datetime', isGreaterThanOrEqualTo: Timestamp.fromDate(fromDate));
-    }
-    ref = ref.orderBy('datetime', descending: false);
-    if (limit != null) {
-      ref = ref.limit(limit);
-    }
-    return ref.snapshots();
+    return _api
+        .rendezVousFlux(profileId: profileId)
+        .map((liste) {
+          if (fromDate == null) return liste;
+          return liste.where((r) {
+            final d = DateTime.tryParse('${r['datetime']}');
+            return d != null && !d.isBefore(fromDate);
+          }).toList();
+        })
+        .map((liste) => limit == null ? liste : liste.take(limit).toList());
   }
 
-  Stream<DocumentSnapshot> patientDoc({
+  /// Un dossier patient. `null` s'il n'existe plus.
+  Stream<Map<String, dynamic>?> patientDoc({
     required String parentUid,
     required String profileId,
     required String patientId,
-  }) {
-    return _db
-        .collection('users')
-        .doc(parentUid)
-        .collection('comptes')
-        .doc(profileId)
-        .collection('patients')
-        .doc(patientId)
-        .snapshots();
-  }
+  }) => _api.dossierFlux(patientId).map((d) => d['patient'] as Map<String, dynamic>?);
 
-  Stream<QuerySnapshot> patientForms({
+  Stream<List<Map<String, dynamic>>> patientForms({
     required String parentUid,
     required String profileId,
     required String patientId,
-  }) {
-    return _db
-        .collection('users')
-        .doc(parentUid)
-        .collection('comptes')
-        .doc(profileId)
-        .collection('patients')
-        .doc(patientId)
-        .collection('forms')
-        .orderBy('createdAt', descending: true)
-        .snapshots();
-  }
+  }) => _api.documentsFlux(patientId: patientId);
 }
-

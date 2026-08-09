@@ -1,4 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import '../services/firestore_service.dart';
 import '../ui/fluent_card.dart';
@@ -21,7 +20,7 @@ class DailyVersementsCard extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final textPrimary = scheme.onSurface;
     final textMuted = scheme.onSurface.withOpacity(0.7);
-    return StreamBuilder<QuerySnapshot>(
+    return StreamBuilder<List<Map<String, dynamic>>>(
       stream: FirestoreService().patientsStream(
         parentUid: parentUid,
         profileId: profileId,
@@ -69,8 +68,7 @@ class DailyVersementsCard extends StatelessWidget {
         double total = 0;
         int count = 0;
 
-        for (final doc in snapshot.data!.docs) {
-          final data = doc.data() as Map<String, dynamic>;
+        for (final data in snapshot.data!) {
           if (_shouldSkipPatient(data, allowedDoctorIds)) continue;
           final versements = data['versements'];
           if (versements is! List) continue;
