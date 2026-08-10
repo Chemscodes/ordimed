@@ -18,17 +18,27 @@ class ApiClient {
 
   static final ApiClient instance = ApiClient._();
 
-  /// Adresse du backend.
+  /// Adresse par defaut, si le poste n'a jamais ete configure.
   ///
-  /// `--dart-define=API_URL=http://192.168.1.20:4000` pour pointer un autre
-  /// poste : sur un vrai cabinet, le serveur ne tourne pas sur la machine
-  /// de l'assistant.
-  static const String baseUrl = String.fromEnvironment(
+  /// `--dart-define=API_URL=...` permet de la changer a la compilation, mais
+  /// ce n'est pas la voie normale : un cabinet a plusieurs postes, et seul
+  /// l'un d'eux fait tourner le serveur. Les autres pointent vers son
+  /// adresse sur le reseau local.
+  static const String urlParDefaut = String.fromEnvironment(
     'API_URL',
     defaultValue: 'http://localhost:4000',
   );
 
   static const _cleJeton = 'ordimed.jeton';
+  static const _cleServeur = 'ordimed.serveur';
+
+  String _baseUrl = urlParDefaut;
+
+  /// L'adresse du serveur, telle que ce poste la connait.
+  ///
+  /// Reglable a l'execution : figer l'adresse a la compilation obligerait a
+  /// produire un binaire par cabinet, avec son IP en dur.
+  String get baseUrl => _baseUrl;
 
   late final Dio _dio = _construire();
 
@@ -49,7 +59,9 @@ class ApiClient {
   Dio _construire() {
     final dio = Dio(
       BaseOptions(
-        baseUrl: '$baseUrl/api',
+        // Renseigne a chaque requete par l'intercepteur : le serveur peut
+        // changer sans reconstruire le client.
+        baseUrl: '$_baseUrl/api',
         // Un cabinet sur ADSL algérienne : large, mais pas infini. Sans
         // délai, une coupure fait tourner le rond indéfiniment.
         connectTimeout: const Duration(seconds: 12),
@@ -64,6 +76,8 @@ class ApiClient {
     dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) {
+          // Suit un changement d'adresse en cours de session.
+          options.baseUrl = '$_baseUrl/api';
           if (_jeton != null) {
             options.headers['Authorization'] = 'Bearer $_jeton';
           }
@@ -91,7 +105,58 @@ class ApiClient {
   /// ressaisirait son mot de passe à chaque lancement.
   Future<void> restaurer() async {
     final prefs = await SharedPreferences.getInstance();
+    _baseUrl = prefs.getString(_cleServeur) ?? urlParDefaut;
     _jeton = prefs.getString(_cleJeton);
+  }
+
+  /// Change le serveur auquel ce poste s'adresse.
+  ///
+  /// La session est abandonnee : un jeton signe par un serveur n'a aucune
+  /// valeur pour un autre, et le garder ferait echouer chaque requete avec
+  /// un 401 incomprehensible.
+  Future<void> definirServeur(String url) async {
+    var propre = url.trim();
+    if (propre.isEmpty) propre = urlParDefaut;
+    // Une adresse saisie a la main arrive souvent sans schema ni avec une
+    // barre finale.
+    if (!propre.startsWith('http://') && !propre.startsWith('https://')) {
+      propre = 'http://$propre';
+    }
+    while (propre.endsWith('/')) {
+      propre = propre.substring(0, propre.length - 1);
+    }
+
+    if (propre == _baseUrl) return;
+    _baseUrl = propre;
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_cleServeur, propre);
+    await _oublierJeton();
+    _sessionPerdue.add(null);
+  }
+
+  /// Verifie qu'un serveur repond, sans toucher a la configuration.
+  ///
+  /// Sert au bouton « Tester » : dire « injoignable » avant d'enregistrer
+  /// evite de laisser le poste sur une adresse fausse.
+  Future<bool> tester(String url) async {
+    var propre = url.trim();
+    if (!propre.startsWith('http')) propre = 'http://$propre';
+    while (propre.endsWith('/')) {
+      propre = propre.substring(0, propre.length - 1);
+    }
+    try {
+      final sonde = Dio(
+        BaseOptions(
+          connectTimeout: const Duration(seconds: 5),
+          receiveTimeout: const Duration(seconds: 5),
+        ),
+      );
+      final r = await sonde.get('$propre/health');
+      return r.statusCode == 200 && r.data is Map && r.data['ok'] == true;
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<void> memoriserJeton(String jeton) async {

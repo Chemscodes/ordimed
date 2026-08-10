@@ -17,9 +17,13 @@ services:
     restart: unless-stopped
     command: ["--replSet", "rs0", "--bind_ip_all"]
     ports:
-      # Exposé pour que Compass ou mongosh puissent regarder la base depuis
-      # le poste. Le backend, lui, passe par le réseau interne.
-      - "27017:27017"
+      # Lié à 127.0.0.1 et non à toutes les interfaces : MongoDB tourne sans
+      # authentification, et un port ouvert sur le réseau du cabinet
+      # laisserait n'importe quel appareil du Wi-Fi lire les dossiers
+      # patients. Compass et mongosh restent utilisables depuis le poste
+      # serveur lui-même ; le backend, lui, passe par le réseau interne de
+      # Docker et n'a pas besoin de ce port.
+      - "127.0.0.1:27017:27017"
     volumes:
       - mongo-data:/data/db
     healthcheck:

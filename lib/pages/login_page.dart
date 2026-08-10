@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
+import 'reglage_serveur.dart';
 import 'signup_page.dart';
 import 'profile_selector_page.dart';
 import '../ui/fluent_card.dart';
@@ -162,6 +163,22 @@ class _LoginPageState extends State<LoginPage> {
                         MaterialPageRoute(builder: (_) => const SignupPage()),
                       ),
                       child: const Text('Créer un compte'),
+                    ),
+                  ),
+                  // C'est ici qu'on decouvre que le serveur ne repond pas :
+                  // le reglage doit etre a portee, pas enfoui dans un menu
+                  // accessible seulement une fois connecte.
+                  Center(
+                    child: TextButton.icon(
+                      onPressed: () async {
+                        final change = await ReglageServeur.ouvrir(context);
+                        if (change && mounted) setState(() {});
+                      },
+                      icon: const Icon(Icons.dns_outlined, size: 16),
+                      label: Text(
+                        'Serveur : ${ApiClient.instance.baseUrl}',
+                        style: const TextStyle(fontSize: 12),
+                      ),
                     ),
                   ),
                 ],

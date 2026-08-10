@@ -42,7 +42,7 @@ class RealtimeService {
     deconnecter();
 
     final socket = io.io(
-      ApiClient.baseUrl,
+      ApiClient.instance.baseUrl,
       io.OptionBuilder()
           .setTransports(['websocket'])
           .setAuth({'token': jeton})
