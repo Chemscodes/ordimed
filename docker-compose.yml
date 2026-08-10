@@ -50,7 +50,12 @@ services:
     environment:
       NODE_ENV: production
       PORT: 4000
-      MONGO_URL: mongodb://mongo:27017/ordimed?replicaSet=rs0
+      # `journal=true` : une ecriture n'est confirmee qu'une fois inscrite
+      # dans le journal sur disque. Sans lui, une coupure de courant peut
+      # perdre les quelques dizaines de millisecondes d'ecritures encore en
+      # memoire — un versement encaisse dont le patient est deja reparti.
+      # Le cout est nul a l'echelle d'un cabinet.
+      MONGO_URL: mongodb://mongo:27017/ordimed?replicaSet=rs0&w=majority&journal=true
       # Défaut de développement. En vrai déploiement, mets-le dans un .env
       # non versionné : quiconque connaît cette chaîne peut fabriquer un
       # jeton valide pour n'importe quel cabinet.

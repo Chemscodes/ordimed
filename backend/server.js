@@ -10,8 +10,13 @@ const { creerApp } = require('./app');
 const { initRealtime } = require('./realtime');
 
 const PORT = Number(process.env.PORT || 4000);
+// `journal=true` rend explicite ce que le defaut promet sans le garantir :
+// une ecriture confirmee est une ecriture inscrite sur disque, pas encore en
+// memoire. C'est ce qui distingue une coupure de courant sans consequence
+// d'une coupure qui perd le dernier versement encaisse.
 const MONGO_URL =
-  process.env.MONGO_URL || 'mongodb://127.0.0.1:27017/ordimed?replicaSet=rs0';
+  process.env.MONGO_URL ||
+  'mongodb://127.0.0.1:27017/ordimed?replicaSet=rs0&w=majority&journal=true';
 
 async function demarrer() {
   await mongoose.connect(MONGO_URL, { serverSelectionTimeoutMS: 15000 });
