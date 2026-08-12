@@ -154,6 +154,8 @@ async function exporter(email, { silencieux = false } = {}) {
 
   let documents = 1 + profils.length;
   const comptes = {};
+  /** Profils nes dans MongoDB : ils repartent avec le PIN par defaut. */
+  const nouveauxProfils = [];
 
   for (const profil of profils) {
     dire(`Profil ${profil.name || profil.role}…`);
@@ -239,7 +241,32 @@ async function exporter(email, { silencieux = false } = {}) {
       );
     }
 
-    comptes[cleProfil] = { donnees: donneesDe(profil, [], cles), collections };
+    const donneesProfil = donneesDe(profil, [], cles);
+
+    /**
+     * Le PIN, et pourquoi il faut en poser un.
+     *
+     * L'app Firebase compare `pinCtrl.text != data['pin']` sur une valeur en
+     * clair. Un profil ne pouvait pas la perdre : elle vivait dans le
+     * document.
+     *
+     * Ici les PIN sont haches, et un hachage ne se remet pas en clair. Pour
+     * les profils qui existaient deja dans Firestore, ce n'est pas un
+     * probleme : la restauration fusionne, le `pin` d'origine reste en
+     * place puisqu'on ne l'ecrase pas.
+     *
+     * Mais un profil cree apres la bascule n'a jamais eu de `pin` la-bas. Il
+     * arriverait sans, la comparaison echouerait toujours, et le profil
+     * serait definitivement inaccessible. On lui pose donc le PIN par
+     * defaut de l'app — celui que `signup_page` donne a tout nouveau
+     * compte — et on le signale.
+     */
+    if (!profil.firestoreId) {
+      donneesProfil.pin = '0000';
+      nouveauxProfils.push(profil.name || profil.role);
+    }
+
+    comptes[cleProfil] = { donnees: donneesProfil, collections };
   }
 
   /**
@@ -262,8 +289,21 @@ async function exporter(email, { silencieux = false } = {}) {
     }
   }
 
+  if (nouveauxProfils.length) {
+    dire(
+      `
+PIN remis a 0000 pour ${nouveauxProfils.length} profil(s) cree(s) ` +
+        `apres la bascule : ${nouveauxProfils.join(', ')}.
+` +
+        'Leur PIN etait hache et ne peut pas etre remis en clair. ' +
+        "Change-les depuis l'app apres la restauration."
+    );
+  }
+
   return {
     version: VERSION_FORMAT,
+    /** Profils dont le PIN a ete reinitialise, pour que l'appelant le sache. */
+    pinsReinitialises: nouveauxProfils,
     genereLe: new Date().toISOString(),
     // L'uid Firebase d'origine, sans lequel l'app refuserait le fichier :
     // « cette sauvegarde appartient à un autre cabinet ».

@@ -188,6 +188,36 @@ describe('Aller-retour', () => {
     assert.equal(p.createdAt.toISOString(), '2026-03-01T09:00:00.000Z');
   });
 
+  it('un profil ne d apres la bascule repart avec un PIN utilisable', async () => {
+    // L'app Firebase compare `pinCtrl.text != data['pin']` en clair. Un
+    // profil arrive sans `pin` serait definitivement inaccessible : la
+    // comparaison echoue toujours.
+    const { Profile: P } = require('../models');
+    const cab = await Cabinet.findOne();
+    await P.create({
+      parentUid: cab._id,
+      name: 'Ne dans Mongo',
+      role: 'assistant',
+      pinHash: 'un-hachage-irreversible',
+    });
+
+    const ex = await exporter('cabinet@aller.dz', { silencieux: true });
+    const nouveau = Object.values(ex.comptes).find(
+      (c) => c.donnees.name === 'Ne dans Mongo'
+    );
+    assert.ok(nouveau);
+    assert.equal(nouveau.donnees.pin, '0000');
+    assert.deepEqual(ex.pinsReinitialises, ['Ne dans Mongo']);
+
+    // Les profils venus de Firestore, eux, n'emportent aucun `pin` : la
+    // restauration fusionne et leur valeur d'origine reste en place.
+    const ancien = ex.comptes.medecin_principal;
+    assert.equal(ancien.donnees.pin, undefined);
+
+    // Et jamais le hachage.
+    assert.ok(!JSON.stringify(ex).includes('un-hachage-irreversible'));
+  });
+
   it('le second aller-retour rend le meme uid', async () => {
     const deuxieme = await exporter('cabinet@aller.dz', { silencieux: true });
     assert.equal(deuxieme.parentUid, 'uid-firebase-abc123');
