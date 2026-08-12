@@ -119,9 +119,17 @@ async function importer(brut, { motDePasse, silencieux = false } = {}) {
       passwordHash: await bcrypt.hash(motDePasse, 10),
       createdAt: c.asDateOrNull(racine.createdAt) || new Date(),
       horaires: racine.horaires || undefined,
+      // Conserve pour que le chemin inverse reste possible.
+      firebaseUid: c.asText(brut.parentUid),
     });
     dire(`Cabinet créé : ${email}`);
   } else {
+    // Un cabinet importe une premiere fois avant l'ajout de ce champ n'a pas
+    // d'uid : on le rattrape ici plutot que d'exiger un reimport complet.
+    if (!cabinet.firebaseUid && brut.parentUid) {
+      cabinet.firebaseUid = c.asText(brut.parentUid);
+      await cabinet.save();
+    }
     dire(`Cabinet existant réutilisé : ${email}`);
   }
 
@@ -161,6 +169,7 @@ async function importer(brut, { motDePasse, silencieux = false } = {}) {
       address: c.asText(d.address || d.adresse),
       tel: c.asText(d.tel || d.telephone),
       whatsappTemplate: c.asText(d.whatsappTemplate),
+      firestoreId: ancienId,
       createdAt: c.asDateOrNull(d.createdAt) || new Date(),
     };
 
@@ -235,6 +244,7 @@ async function importer(brut, { motDePasse, silencieux = false } = {}) {
               // `number` ou `string` selon l'écran de saisie d'origine.
               prix: c.asNumberOrNull(d.prix),
               totalVersements: c.asNumber(d.totalVersements),
+              firestoreId: ancienId,
               createdAt: c.asDateOrNull(d.createdAt) || new Date(),
               deletedAt: c.asDateOrNull(d.deletedAt),
             },

@@ -67,6 +67,14 @@ const CabinetSchema = new Schema(
      * conserve a l'import ; ici il n'y a plus qu'une source.
      */
     motifsPredefinis: { type: [String], default: [] },
+    /**
+     * L'uid Firebase d'origine, quand le cabinet vient d'un import.
+     *
+     * Conserve pour que le chemin inverse reste possible : une sauvegarde
+     * reexportee depuis MongoDB doit porter cet uid, sinon l'app Firebase
+     * la refuse — « cette sauvegarde appartient a un autre cabinet ».
+     */
+    firebaseUid: { type: String, default: '' },
     createdAt: { type: Date, default: Date.now },
   },
   options
@@ -99,6 +107,12 @@ const ProfileSchema = new Schema(
 
     whatsappTemplate: { type: String, default: '' },
     whatsappTemplateUpdatedAt: { type: Date, default: null },
+
+    /// Identifiant du document Firestore d'origine, quand il y en a un.
+    ///
+    /// Sans lui, un retour vers Firebase creerait des profils en double au
+    /// lieu de reecrire les existants.
+    firestoreId: { type: String, default: '' },
 
     createdAt: { type: Date, default: Date.now },
   },
@@ -176,6 +190,9 @@ const PatientSchema = new Schema(
      * si MongoDB tient 16 Mo.
      */
     versements: { type: [VersementCacheSchema], default: [] },
+
+    /// Identifiant du document Firestore d'origine, quand il y en a un.
+    firestoreId: { type: String, default: '' },
 
     createdAt: { type: Date, default: Date.now },
     /**

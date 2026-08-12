@@ -55,6 +55,35 @@ fois et chaque entrée de salle d'attente trois fois. Le compteur `ignores`
 en fin d'import compte ces doublons **et** les documents inexploitables
 (rendez-vous sans date, patient introuvable).
 
+## Revenir a Firebase
+
+Le chemin inverse existe et il est teste. La boucle se ferme parce que
+`BackupService.restaurer`, au tag `firebase-final`, sait deja ecrire ce
+format **dans Firestore**.
+
+```bash
+docker compose exec backend npm run export -- cabinet@exemple.dz
+# -> backend/import/ordimed-AAAA-MM-JJ-HHMM.json
+
+git checkout firebase-final
+flutter build windows --debug
+# copie le fichier dans Documents\Ordimed\sauvegardes
+# lance l'app -> Sauvegardes -> Restaurer
+```
+
+Deux details rendent ce retour possible, et ils sont poses a l'import :
+
+- **l'uid Firebase du cabinet** est conserve (`firebaseUid`). Sans lui l'app
+  refuse le fichier — « cette sauvegarde appartient a un autre cabinet » ;
+- **les identifiants Firestore d'origine** sont conserves (`firestoreId`).
+  Sans eux la restauration creerait une seconde serie de dossiers au lieu de
+  reecrire les existants.
+
+Les references entre documents — un patient vers son medecin, un rendez-vous
+vers son patient — sont traduites vers ces identifiants a l'export. Une
+reference laissee en ObjectId ferait ecarter le document **en silence** :
+c'est exactement le bug que le test d'aller-retour a attrape.
+
 ## Les routes
 
 | Méthode | Route | Remplace |
