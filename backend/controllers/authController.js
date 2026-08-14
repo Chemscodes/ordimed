@@ -126,6 +126,36 @@ exports.moi = async (req, res) => {
  * depuis `users/{uid}.horaires` s'il existait, sinon codés en dur. La route
  * existe pour que l'écran de réglages ait où écrire.
  */
+/**
+ * Ajoute des valeurs a une liste de reference du cabinet.
+ *
+ * `arrayUnion` de Firestore n'a pas d'equivalent direct : `$addToSet` avec
+ * `$each` fait la meme chose, sans doublons.
+ *
+ * Un echec ne doit jamais empecher d'enregistrer une ordonnance : la liste
+ * est une commodite de saisie, pas une donnee medicale.
+ */
+exports.ajouterListe = async (req, res) => {
+  const nom = String(req.body.liste || '').trim();
+  if (!/^[a-zA-Z]+$/.test(nom)) {
+    return res.status(400).json({ error: 'Nom de liste invalide' });
+  }
+
+  const valeurs = (Array.isArray(req.body.valeurs) ? req.body.valeurs : [])
+    .map((v) => String(v).trim())
+    .filter(Boolean);
+  if (!valeurs.length) return res.json({ ok: true });
+
+  const cabinet = await Cabinet.findByIdAndUpdate(
+    req.parentUid,
+    { $addToSet: { [`listesReference.${nom}`]: { $each: valeurs } } },
+    { new: true }
+  );
+  if (!cabinet) return res.status(404).json({ error: 'Cabinet introuvable' });
+
+  return res.json(cabinet.toJSON());
+};
+
 exports.majCabinet = async (req, res) => {
   const maj = {};
   if (req.body.horaires !== undefined) maj.horaires = req.body.horaires;

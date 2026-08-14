@@ -3,7 +3,6 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
@@ -485,22 +484,19 @@ class PatientDetailsPage extends StatelessWidget {
                                 // porte l'historique complet. Sans cette
                                 // lecture, les anciens disparaitraient de
                                 // l'ecran alors qu'ils existent toujours.
-                                child: StreamBuilder<QuerySnapshot>(
-                                  stream: FirebaseFirestore.instance
-                                      .collection('users')
-                                      .doc(parentUid)
-                                      .collection('comptes')
-                                      .doc(ownerProfileId)
-                                      .collection('patients')
-                                      .doc(patientId)
-                                      .collection('versements')
-                                      .snapshots(),
+                                child: StreamBuilder<Map<String, dynamic>>(
+                                  stream: ApiService.instance.dossierFlux(
+                                    patientId,
+                                  ),
                                   builder: (context, versSnap) {
-                                    final sous = (versSnap.data?.docs ?? [])
+                                    final sous =
+                                        ((versSnap.data?['versements']
+                                                    as List?) ??
+                                                const [])
                                         .map(
                                           (d) => Versement.fromMap(
-                                            d.data() as Map<String, dynamic>,
-                                            id: d.id,
+                                            Map<String, dynamic>.from(d as Map),
+                                            id: (d['id'] ?? '').toString(),
                                           ),
                                         )
                                         .toList();
@@ -684,15 +680,10 @@ class PatientDetailsPage extends StatelessWidget {
     return list;
   }
 
-  DateTime _asDate(dynamic value) {
-    if (value is Timestamp) return value.toDate();
-    if (value is DateTime) return value;
-    if (value is String) {
-      final parsed = DateTime.tryParse(value);
-      if (parsed != null) return parsed;
-    }
-    return DateTime.fromMillisecondsSinceEpoch(0);
-  }
+  // asDateOrNull accepte l'ISO du backend comme les Timestamp encore
+  // presents dans les donnees importees.
+  DateTime _asDate(dynamic value) =>
+      asDateOrNull(value) ?? DateTime.fromMillisecondsSinceEpoch(0);
 
   String _formatDateTime(dynamic value) {
     final date = _asDate(value);
@@ -912,11 +903,10 @@ class PatientDetailsPage extends StatelessWidget {
     required String fieldName,
   }) async {
     try {
-      final snap = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(parentUid)
-          .get();
-      return _normalizeCabinetItems(snap.data()?[fieldName]);
+      final cabinet = await ApiService.instance.cabinet();
+      final listes = cabinet['listesReference'];
+      final brut = listes is Map ? listes[fieldName] : null;
+      return _normalizeCabinetItems(brut);
     } catch (_) {
       return const [];
     }
@@ -930,9 +920,9 @@ class PatientDetailsPage extends StatelessWidget {
     if (incoming.isEmpty) return;
 
     try {
-      await FirebaseFirestore.instance.collection('users').doc(parentUid).set({
-        fieldName: FieldValue.arrayUnion(incoming),
-      }, SetOptions(merge: true));
+      // `arrayUnion` devient `$addToSet` cote serveur : meme resultat, sans
+      // doublons.
+      await ApiService.instance.ajouterListe(fieldName, incoming);
     } catch (_) {
       // Ne jamais bloquer l'enregistrement d'une ordonnance/bilan
       // si la mise a jour de la base cabinet echoue.
@@ -976,16 +966,13 @@ class PatientDetailsPage extends StatelessWidget {
     BuildContext context,
     Map<String, dynamic> patientData,
   ) async {
-    final profileRef = FirebaseFirestore.instance
-        .collection('users')
-        .doc(parentUid)
-        .collection('comptes')
-        .doc(ownerProfileId);
-
     Map<String, dynamic> profileData = {};
     try {
-      final snap = await profileRef.get();
-      profileData = snap.data() ?? {};
+      final profils = await ApiService.instance.profils();
+      profileData = profils.firstWhere(
+        (p) => p['id'] == ownerProfileId,
+        orElse: () => <String, dynamic>{},
+      );
     } catch (_) {}
 
     final nameCtrl = TextEditingController(
@@ -1368,23 +1355,12 @@ class PatientDetailsPage extends StatelessWidget {
                       'ordonnanceNumero': ordNumber,
                       // seanceNumero intentionally omitted for ordonnance
                       'note_de_seance': noteCtrl.text.trim(),
-                      'createdAt': FieldValue.serverTimestamp(),
-                      'auteurProfileId': ownerProfileId,
+                                      'auteurProfileId': ownerProfileId,
                       'patientId': patientId,
-                      'parentUid': parentUid,
-                    };
+                                    };
 
                     try {
-                      final base = FirebaseFirestore.instance
-                          .collection('users')
-                          .doc(parentUid)
-                          .collection('comptes')
-                          .doc(ownerProfileId)
-                          .collection('patients')
-                          .doc(patientId)
-                          .collection('forms')
-                          .doc();
-                      await base.set(data);
+                      await ApiService.instance.creerDocument(data);
 
                       if (canUpdateCabinetMedicaments) {
                         unawaited(
@@ -1424,7 +1400,10 @@ class PatientDetailsPage extends StatelessWidget {
                         updates['ordonnanceCounter'] = ordNumber;
                       }
                       if (updates.isNotEmpty) {
-                        await profileRef.set(updates, SetOptions(merge: true));
+                        await ApiService.instance.majProfil(
+                          ownerProfileId,
+                          updates,
+                        );
                       }
                       if (!context.mounted) return;
                       Navigator.pop(dialogContext);
@@ -1495,16 +1474,13 @@ class PatientDetailsPage extends StatelessWidget {
     BuildContext context,
     Map<String, dynamic> patientData,
   ) async {
-    final profileRef = FirebaseFirestore.instance
-        .collection('users')
-        .doc(parentUid)
-        .collection('comptes')
-        .doc(ownerProfileId);
-
     Map<String, dynamic> profileData = {};
     try {
-      final snap = await profileRef.get();
-      profileData = snap.data() ?? {};
+      final profils = await ApiService.instance.profils();
+      profileData = profils.firstWhere(
+        (p) => p['id'] == ownerProfileId,
+        orElse: () => <String, dynamic>{},
+      );
     } catch (_) {}
 
     final nameCtrl = TextEditingController(
@@ -1805,23 +1781,12 @@ class PatientDetailsPage extends StatelessWidget {
                       'patientAge': (patientData['age'] ?? '').toString(),
                       'dateStr': dateStr,
                       if (seanceNumero != null) 'seanceNumero': seanceNumero,
-                      'createdAt': FieldValue.serverTimestamp(),
-                      'auteurProfileId': ownerProfileId,
+                                      'auteurProfileId': ownerProfileId,
                       'patientId': patientId,
-                      'parentUid': parentUid,
-                    };
+                                    };
 
                     try {
-                      final base = FirebaseFirestore.instance
-                          .collection('users')
-                          .doc(parentUid)
-                          .collection('comptes')
-                          .doc(ownerProfileId)
-                          .collection('patients')
-                          .doc(patientId)
-                          .collection('forms')
-                          .doc();
-                      await base.set(data);
+                      await ApiService.instance.creerDocument(data);
 
                       if (canUpdateCabinetBilans) {
                         unawaited(
@@ -1858,7 +1823,10 @@ class PatientDetailsPage extends StatelessWidget {
                         updates['tel'] = newPhone;
                       }
                       if (updates.isNotEmpty) {
-                        await profileRef.set(updates, SetOptions(merge: true));
+                        await ApiService.instance.majProfil(
+                          ownerProfileId,
+                          updates,
+                        );
                       }
                       if (!context.mounted) return;
                       Navigator.pop(dialogContext);
@@ -2088,86 +2056,26 @@ class PatientDetailsPage extends StatelessWidget {
     }
   }
 
+  /// Enregistre une modification du dossier.
+  ///
+  /// Le batch ecrivait sur les trois copies — profil courant, medecin,
+  /// assistant — parce que Firestore n'avait pas de document unique. Le nom
+  /// reste le temps que ses appelants soient relus ; il n'y a plus qu'un
+  /// dossier a mettre a jour.
   Future<void> _updatePatientCopies(
     Map<String, dynamic> patientData,
     Map<String, dynamic> updates,
   ) async {
-    final base = FirebaseFirestore.instance
-        .collection('users')
-        .doc(parentUid)
-        .collection('comptes');
-    final doctorId = (patientData['doctorId'] ?? '').toString();
-    final assistantId = (patientData['assistantId'] ?? '').toString();
-
-    final batch = FirebaseFirestore.instance.batch();
-    void setForProfile(String profileId) {
-      if (profileId.isEmpty) return;
-      batch.set(
-        base.doc(profileId).collection('patients').doc(patientId),
-        updates,
-        SetOptions(merge: true),
-      );
-    }
-
-    setForProfile(ownerProfileId);
-    if (doctorId.isNotEmpty && doctorId != ownerProfileId) {
-      setForProfile(doctorId);
-    }
-    if (assistantId.isNotEmpty &&
-        assistantId != ownerProfileId &&
-        assistantId != doctorId) {
-      setForProfile(assistantId);
-    }
-
-    await batch.commit();
+    await ApiService.instance.majPatient(patientId, updates);
   }
 
+  /// Reporte le forfait sur l'entree de salle d'attente ouverte.
+  ///
+  /// La methode ecrivait sur trois copies de chaque entree — profil,
+  /// medecin principal, medecin — en sautant celles deja closes. Le forfait
+  /// vit sur le dossier, que la file lit : il n'y a plus rien a recopier.
   Future<void> _updateWaitingSeances(int total) async {
-    final base = FirebaseFirestore.instance
-        .collection('users')
-        .doc(parentUid)
-        .collection('comptes');
-    final snap = await base
-        .doc(ownerProfileId)
-        .collection('salle_attente')
-        .where('patientId', isEqualTo: patientId)
-        .get();
-    if (snap.docs.isEmpty) return;
-
-    final batch = FirebaseFirestore.instance.batch();
-    final seen = <String>{};
-    for (final doc in snap.docs) {
-      final data = doc.data();
-      final status = (data['status'] ?? '').toString();
-      if (status == 'done') continue;
-      final waitingId = doc.id;
-      final doctorId = (data['doctorId'] ?? '').toString();
-      final assistantId = (data['assistantId'] ?? '').toString();
-      final targets = <DocumentReference>[
-        base.doc(ownerProfileId).collection('salle_attente').doc(waitingId),
-        base
-            .doc('medecin_principal')
-            .collection('salle_attente')
-            .doc(waitingId),
-      ];
-      if (doctorId.isNotEmpty) {
-        targets.add(
-          base.doc(doctorId).collection('salle_attente').doc(waitingId),
-        );
-      }
-      if (assistantId.isNotEmpty) {
-        targets.add(
-          base.doc(assistantId).collection('salle_attente').doc(waitingId),
-        );
-      }
-      for (final ref in targets) {
-        if (seen.add(ref.path)) {
-          batch.set(ref, {'nombreSeances': total}, SetOptions(merge: true));
-        }
-      }
-    }
-    if (seen.isEmpty) return;
-    await batch.commit();
+    await ApiService.instance.majPatient(patientId, {'nombreSeances': total});
   }
 
   Widget _buildBilanPreview({
@@ -2844,85 +2752,26 @@ class PatientDetailsPage extends StatelessWidget {
 
     if (res != true) return;
 
-    final formId = FirebaseFirestore.instance.collection('tmp').doc().id;
     final data = <String, dynamic>{
       'type': typeCtrl.text.trim().isEmpty ? 'Note' : typeCtrl.text.trim(),
       'contenu': ctrl.text.trim(),
-      'createdAt': FieldValue.serverTimestamp(),
       'auteurProfileId': ownerProfileId,
       'patientId': patientId,
-      'parentUid': parentUid,
-      'formId': formId,
     };
 
     try {
-      final base = FirebaseFirestore.instance
-          .collection('users')
-          .doc(parentUid)
-          .collection('comptes');
-
-      final patientSnap = await base
-          .doc(ownerProfileId)
-          .collection('patients')
-          .doc(patientId)
-          .get();
-
-      if (!patientSnap.exists) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('Patient introuvable')));
-        }
-        return;
-      }
-
-      final patientData = patientSnap.data() ?? {};
+      // Ce bloc verifiait l'existence du dossier, puis construisait une
+      // liste de references — profil courant, medecin, assistant — pour
+      // ecrire le meme formulaire sous chacune. Le backend refuse un
+      // patient inconnu et n'ecrit qu'un document.
+      final patientData = await ApiService.instance.patient(patientId);
       final auteurName = _resolveAuteurNameForCurrent(patientData);
       if (auteurName.isNotEmpty) {
         data['auteurName'] = auteurName;
       }
-      final doctorId = (patientData['doctorId'] ?? '').toString();
-      final assistantId = (patientData['assistantId'] ?? '').toString();
 
-      final targets = <DocumentReference>[];
+      await ApiService.instance.creerDocument(data);
 
-      // Toujours dans le compte en cours
-      targets.add(
-        base
-            .doc(ownerProfileId)
-            .collection('patients')
-            .doc(patientId)
-            .collection('forms')
-            .doc(),
-      );
-
-      // Réplication côté médecin
-      if (doctorId.isNotEmpty && doctorId != ownerProfileId) {
-        targets.add(
-          base
-              .doc(doctorId)
-              .collection('patients')
-              .doc(patientId)
-              .collection('forms')
-              .doc(),
-        );
-      }
-
-      // Réplication côté assistant
-      if (assistantId.isNotEmpty &&
-          assistantId != ownerProfileId &&
-          assistantId != doctorId) {
-        targets.add(
-          base
-              .doc(assistantId)
-              .collection('patients')
-              .doc(patientId)
-              .collection('forms')
-              .doc(),
-        );
-      }
-
-      await Future.wait(targets.map((ref) => ref.set(data)));
 
       if (context.mounted) {
         ScaffoldMessenger.of(
@@ -3254,32 +3103,18 @@ class PatientDetailsPage extends StatelessWidget {
       'complement': complementCtrl.text.trim(),
     };
 
-    final formId = FirebaseFirestore.instance.collection('tmp').doc().id;
     final data = <String, dynamic>{
       'type': 'Formulaire medecin',
       'sections': sections,
-      'createdAt': FieldValue.serverTimestamp(),
       'auteurProfileId': ownerProfileId,
       'patientId': patientId,
-      'parentUid': parentUid,
-      'formId': formId,
     };
     if (auteurName.isNotEmpty) {
       data['auteurName'] = auteurName;
     }
 
     try {
-      final base = FirebaseFirestore.instance
-          .collection('users')
-          .doc(parentUid)
-          .collection('comptes')
-          .doc(ownerProfileId)
-          .collection('patients')
-          .doc(patientId)
-          .collection('forms')
-          .doc();
-
-      await base.set(data);
+      await ApiService.instance.creerDocument(data);
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -3377,10 +3212,8 @@ class PatientDetailsPage extends StatelessWidget {
     final newType = typeCtrl.text.trim().isEmpty
         ? rawType
         : typeCtrl.text.trim();
-    final updates = <String, dynamic>{
-      'type': newType,
-      'updatedAt': FieldValue.serverTimestamp(),
-    };
+    // L'horodatage de modification est pose par le serveur.
+    final updates = <String, dynamic>{'type': newType};
 
     if (hasSections) {
       final nextSections = <String, String>{};
@@ -3437,24 +3270,10 @@ class PatientDetailsPage extends StatelessWidget {
     if (motif.isEmpty) return [];
 
     try {
-      final parentSnap = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(parentUid)
-          .get();
-      dynamic raw = parentSnap.data()?['motifPrototypes'];
-      if (raw is! Map) {
-        final assistantId = (patientData['assistantId'] ?? '')
-            .toString()
-            .trim();
-        final ownerId = assistantId.isNotEmpty ? assistantId : ownerProfileId;
-        final snap = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(parentUid)
-            .collection('comptes')
-            .doc(ownerId)
-            .get();
-        raw = snap.data()?['motifPrototypes'];
-      }
+      // Le repli sur le profil disparait : les prototypes vivaient a deux
+      // endroits, le backend n'en a plus qu'un.
+      final cabinet = await ApiService.instance.cabinet();
+      final dynamic raw = cabinet['motifPrototypes'];
       if (raw is! Map) return [];
       final map = <String, List<String>>{};
       raw.forEach((key, value) {
@@ -3492,15 +3311,7 @@ class PatientDetailsPage extends StatelessWidget {
 
   Future<Map<String, dynamic>> _fetchPatientData() async {
     try {
-      final snap = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(parentUid)
-          .collection('comptes')
-          .doc(ownerProfileId)
-          .collection('patients')
-          .doc(patientId)
-          .get();
-      return snap.data() ?? {};
+      return await ApiService.instance.patient(patientId);
     } catch (_) {
       return {};
     }
@@ -3564,32 +3375,18 @@ class PatientDetailsPage extends StatelessWidget {
 
     controllers.values.forEach((c) => c.dispose());
 
-    final formId = FirebaseFirestore.instance.collection('tmp').doc().id;
     final data = <String, dynamic>{
       'type': 'Formulaire medecin',
       'sections': sections,
-      'createdAt': FieldValue.serverTimestamp(),
       'auteurProfileId': ownerProfileId,
       'patientId': patientId,
-      'parentUid': parentUid,
-      'formId': formId,
     };
     if (auteurName.isNotEmpty) {
       data['auteurName'] = auteurName;
     }
 
     try {
-      final base = FirebaseFirestore.instance
-          .collection('users')
-          .doc(parentUid)
-          .collection('comptes')
-          .doc(ownerProfileId)
-          .collection('patients')
-          .doc(patientId)
-          .collection('forms')
-          .doc();
-
-      await base.set(data);
+      await ApiService.instance.creerDocument(data);
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -4022,11 +3819,10 @@ class _MetricCard extends StatelessWidget {
 
 
 String _formatDateHeader(dynamic ts) {
-  if (ts is Timestamp) {
-    final d = ts.toDate();
-    return '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
-  }
-  return ts?.toString() ?? '';
+  final d = asDateOrNull(ts);
+  if (d == null) return ts?.toString() ?? '';
+  return '${d.day.toString().padLeft(2, '0')}/'
+      '${d.month.toString().padLeft(2, '0')}/${d.year}';
 }
 
 Widget _renderFormGroups(

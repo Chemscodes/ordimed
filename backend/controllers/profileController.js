@@ -64,6 +64,13 @@ exports.modifier = async (req, res) => {
     wilaya: req.body.wilaya !== undefined ? c.asText(req.body.wilaya) : undefined,
     address: req.body.address !== undefined ? c.asText(req.body.address) : undefined,
     tel: req.body.tel !== undefined ? c.asText(req.body.tel) : undefined,
+    nameAr: req.body.nameAr !== undefined ? c.asText(req.body.nameAr) : undefined,
+    subtitle:
+      req.body.subtitle !== undefined ? c.asText(req.body.subtitle) : undefined,
+    ordonnanceCounter:
+      req.body.ordonnanceCounter !== undefined
+        ? c.asIntOrNull(req.body.ordonnanceCounter)
+        : undefined,
     whatsappTemplate:
       req.body.whatsappTemplate !== undefined
         ? c.asText(req.body.whatsappTemplate)

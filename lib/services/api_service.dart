@@ -94,6 +94,16 @@ class ApiService {
   Future<void> majHoraires(Map<String, dynamic> horaires) =>
       majCabinet({'horaires': horaires});
 
+  /// Ajoute des valeurs a une liste de reference du cabinet.
+  ///
+  /// `cabinetMedicaments`, `cabinetBilans` : ce que le medecin ecrit une
+  /// fois lui est propose la fois suivante.
+  Future<void> ajouterListe(String liste, Iterable<String> valeurs) =>
+      _api.post('/auth/cabinet/liste', {
+        'liste': liste,
+        'valeurs': valeurs.toList(),
+      });
+
   // -----------------------------------------------------------------
   //  Profils
   // -----------------------------------------------------------------

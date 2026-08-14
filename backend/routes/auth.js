@@ -18,5 +18,6 @@ router.post('/pin', exigeAuth, asyncHandler(ctrl.verifierPin));
 
 router.get('/me', exigeAuth, asyncHandler(ctrl.moi));
 router.put('/cabinet', exigeAuth, asyncHandler(ctrl.majCabinet));
+router.post('/cabinet/liste', exigeAuth, asyncHandler(ctrl.ajouterListe));
 
 module.exports = router;

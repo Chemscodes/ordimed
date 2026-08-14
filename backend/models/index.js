@@ -75,6 +75,15 @@ const CabinetSchema = new Schema(
      */
     motifPrototypes: { type: Schema.Types.Mixed, default: () => ({}) },
     /**
+     * Listes de reference du cabinet : `cabinetMedicaments`,
+     * `cabinetBilans`.
+     *
+     * Elles s'enrichissent toutes seules — ce que le medecin ecrit une fois
+     * lui est propose la fois suivante. Forme libre : le cabinet decide de
+     * ce qu'il accumule.
+     */
+    listesReference: { type: Schema.Types.Mixed, default: () => ({}) },
+    /**
      * L'uid Firebase d'origine, quand le cabinet vient d'un import.
      *
      * Conserve pour que le chemin inverse reste possible : une sauvegarde
@@ -111,6 +120,17 @@ const ProfileSchema = new Schema(
     wilaya: { type: String, default: '' },
     address: { type: String, default: '' },
     tel: { type: String, default: '' },
+    /// Nom en arabe, imprimé à droite de l'en-tête.
+    nameAr: { type: String, default: '' },
+    /// Spécialité, sous le nom.
+    subtitle: { type: String, default: '' },
+    /**
+     * Numéro de la dernière ordonnance émise.
+     *
+     * Incrémenté par le médecin lui-même : c'est une numérotation de
+     * cabinet, pas une séquence technique.
+     */
+    ordonnanceCounter: { type: Number, default: 0 },
 
     whatsappTemplate: { type: String, default: '' },
     whatsappTemplateUpdatedAt: { type: Date, default: null },
