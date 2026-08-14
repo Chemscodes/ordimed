@@ -129,6 +129,9 @@ exports.moi = async (req, res) => {
 exports.majCabinet = async (req, res) => {
   const maj = {};
   if (req.body.horaires !== undefined) maj.horaires = req.body.horaires;
+  if (req.body.motifPrototypes !== undefined) {
+    maj.motifPrototypes = req.body.motifPrototypes;
+  }
   if (Array.isArray(req.body.motifsPredefinis)) {
     maj.motifsPredefinis = req.body.motifsPredefinis
       .map((m) => String(m).trim())

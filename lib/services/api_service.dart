@@ -237,11 +237,13 @@ class ApiService {
     String? profileId,
     DateTime? jour,
     DateTime? depuis,
+    int? limit,
   }) async => _liste(
     await _api.get('/rendezvous', params: {
       if (profileId != null) 'profileId': profileId,
       if (jour != null) 'jour': jour.toIso8601String(),
       if (depuis != null) 'depuis': depuis.toIso8601String(),
+      if (limit != null) 'limit': limit,
     }),
   );
 

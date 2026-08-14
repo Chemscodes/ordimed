@@ -68,6 +68,13 @@ const CabinetSchema = new Schema(
      */
     motifsPredefinis: { type: [String], default: [] },
     /**
+     * Champs a pre-remplir selon le motif : `{ motif: [champ, …] }`.
+     *
+     * Forme libre plutot que schema fige : le cabinet ajoute ses propres
+     * motifs, et chacun peut demander des champs differents.
+     */
+    motifPrototypes: { type: Schema.Types.Mixed, default: () => ({}) },
+    /**
      * L'uid Firebase d'origine, quand le cabinet vient d'un import.
      *
      * Conserve pour que le chemin inverse reste possible : une sauvegarde

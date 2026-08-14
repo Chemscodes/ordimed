@@ -173,8 +173,18 @@ exports.modifier = async (req, res) => {
   }
 
   if (req.body.motif !== undefined) maj.motif = c.asText(req.body.motif);
+  // Le numero est mis en cache sur le rendez-vous : le rappel WhatsApp
+  // partait sinon chercher le dossier a chaque envoi.
+  if (req.body.patientTel !== undefined) {
+    maj.patientTel = c.asText(req.body.patientTel);
+  }
+  // `true` demande un horodatage serveur ; une date explicite est acceptee
+  // pour rejouer un envoi.
   if (req.body.reminderSentAt !== undefined) {
-    maj.reminderSentAt = c.asDateOrNull(req.body.reminderSentAt);
+    maj.reminderSentAt =
+      req.body.reminderSentAt === true
+        ? new Date()
+        : c.asDateOrNull(req.body.reminderSentAt);
   }
 
   const majDoc = await RendezVous.findByIdAndUpdate(rdv._id, { $set: maj }, { new: true });

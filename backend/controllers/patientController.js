@@ -2,7 +2,7 @@
 
 const mongoose = require('mongoose');
 
-const { Patient, Form, Versement, Waiting } = require('../models');
+const { Patient, Form, Versement, Waiting, RendezVous } = require('../models');
 const { scope, resoudreProfil } = require('../middleware/auth');
 const { diffuser } = require('../realtime');
 const c = require('../lib/coerce');
@@ -224,17 +224,77 @@ exports.modifier = async (req, res) => {
  * intacts et restaurables. C'est la reprise de `services/soft_delete.dart`.
  */
 exports.supprimer = async (req, res) => {
-  const patient = await Patient.findOneAndUpdate(
-    scope(req, { _id: req.params.id }),
-    { $set: { deletedAt: new Date() } },
-    { new: true }
-  );
+  const session = await mongoose.startSession();
+  let patient;
+
+  try {
+    await session.withTransaction(async () => {
+      patient = await Patient.findOneAndUpdate(
+        scope(req, { _id: req.params.id }),
+        { $set: { deletedAt: new Date() } },
+        { new: true, session }
+      );
+      if (!patient) return;
+
+      /**
+       * Le retrait des elements operationnels.
+       *
+       * L'app le faisait apres coup, en tache de fond, et sans transaction :
+       * un patient supprime pouvait rester dans la file d'attente du
+       * medecin, qui l'appelait pour rien. C'est le meme geste, il part
+       * avec la suppression.
+       *
+       * Les rendez-vous a venir sont annules ; ceux deja passes gardent
+       * leur etape, ils font partie de l'historique.
+       */
+      await Waiting.updateMany(
+        { parentUid: req.parentUid, patientId: patient._id, closedAt: null },
+        {
+          $set: {
+            etape: 'annule',
+            status: 'cancelled',
+            closedAt: new Date(),
+          },
+        },
+        { session }
+      );
+
+      await RendezVous.updateMany(
+        {
+          parentUid: req.parentUid,
+          patientId: patient._id,
+          datetime: { $gte: new Date() },
+          etape: { $nin: ['honore', 'absent', 'annule'] },
+        },
+        {
+          $set: {
+            etape: 'annule',
+            motifAnnulation: 'Dossier supprime',
+            'etapesAt.annule': new Date(),
+          },
+        },
+        { session }
+      );
+    });
+  } finally {
+    await session.endSession();
+  }
+
   if (!patient) return res.status(404).json({ error: 'Patient introuvable' });
 
   diffuser(req.parentUid, 'patients', 'suppression', { id: String(patient._id) });
+  diffuser(req.parentUid, 'salle_attente', 'maj', {});
+  diffuser(req.parentUid, 'rendezvous', 'maj', {});
   return res.json(patient.toJSON());
 };
 
+/**
+ * Annule une suppression.
+ *
+ * Les entrees de salle d'attente restent closes : un patient restaure n'a
+ * pas a reapparaitre dans la file d'une journee deja passee. Ses rendez-vous
+ * a venir, eux, redeviennent planifies.
+ */
 exports.restaurer = async (req, res) => {
   const patient = await Patient.findOneAndUpdate(
     scope(req, { _id: req.params.id }),
@@ -243,7 +303,18 @@ exports.restaurer = async (req, res) => {
   );
   if (!patient) return res.status(404).json({ error: 'Patient introuvable' });
 
+  await RendezVous.updateMany(
+    {
+      parentUid: req.parentUid,
+      patientId: patient._id,
+      motifAnnulation: 'Dossier supprime',
+      datetime: { $gte: new Date() },
+    },
+    { $set: { etape: 'planifie', motifAnnulation: '' } }
+  );
+
   diffuser(req.parentUid, 'patients', 'maj', { id: String(patient._id) });
+  diffuser(req.parentUid, 'rendezvous', 'maj', {});
   return res.json(patient.toJSON());
 };
 

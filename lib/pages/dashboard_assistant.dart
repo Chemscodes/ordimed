@@ -1,8 +1,6 @@
 import '../ui/app_theme.dart';
 import 'dart:async';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -14,6 +12,9 @@ import '../services/firestore_service.dart';
 import '../core/creneaux.dart';
 import '../core/parcours.dart';
 import '../core/versements.dart';
+import '../services/api_client.dart';
+import '../services/api_service.dart';
+import '../services/auth_service.dart';
 import '../services/recu_service.dart';
 import '../services/rendezvous_repository.dart';
 import 'choix_creneau_page.dart';
@@ -142,19 +143,14 @@ class _DashboardAssistantState extends State<DashboardAssistant> {
       return;
     }
 
-    final doc = FirebaseFirestore.instance
-        .collection('users')
-        .doc(widget.parentUid)
-        .collection('comptes')
-        .doc(widget.profileId)
-        .collection('purchases')
-        .doc();
-
-    await doc.set({
+    // La statistique du jour est mise a jour par la meme transaction cote
+    // serveur : c'etait une seconde ecriture apres coup, qui pouvait
+    // echouer seule et fausser les chiffres du cabinet.
+    await ApiService.instance.creerAchat({
       'produit': produitCtrl.text.trim(),
       'fournisseur': fournisseurCtrl.text.trim(),
       'montant': montant,
-      'createdAt': Timestamp.now(),
+      'profileId': widget.profileId,
       'dayKey': _todayKey(),
       'parentUid': widget.parentUid,
       'profileId': widget.profileId,
@@ -207,15 +203,12 @@ class _DashboardAssistantState extends State<DashboardAssistant> {
 
     String reminderTemplate = '';
     try {
-      final templateSnap = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(widget.parentUid)
-          .collection('comptes')
-          .doc(widget.profileId)
-          .get();
-      reminderTemplate = (templateSnap.data()?['whatsappTemplate'] ?? '')
-          .toString()
-          .trim();
+      final profils = await ApiService.instance.profils();
+      final moi = profils.firstWhere(
+        (p) => p['id'] == widget.profileId,
+        orElse: () => <String, dynamic>{},
+      );
+      reminderTemplate = (moi['whatsappTemplate'] ?? '').toString().trim();
     } catch (_) {}
 
     final rdvData = {
@@ -227,13 +220,11 @@ class _DashboardAssistantState extends State<DashboardAssistant> {
       'doctorName': patient['assignedMedecinName'] ?? '',
       'assistantId': widget.profileId,
       'motif': patient['motif'] ?? '',
-      'datetime': Timestamp.fromDate(dt),
+      'datetime': dt.toIso8601String(),
       // Sans la duree, tout rendez-vous serait suppose durer le temps par
       // defaut : une consultation d'une heure laisserait libres des creneaux
       // qu'elle occupe en realite.
       'duree': creneau.duree,
-      'createdAt': FieldValue.serverTimestamp(),
-      'parentUid': widget.parentUid,
     };
     if (reminderTemplate.isNotEmpty) {
       rdvData['reminderTemplate'] = reminderTemplate;
@@ -253,18 +244,25 @@ class _DashboardAssistantState extends State<DashboardAssistant> {
     }
   }
 
+  /// Supprime les rendez-vous deja passes.
+  ///
+  /// Chaque suppression effacait trois copies — profil, medecin, medecin
+  /// principal — avec un `catchError` sur chacune : une copie manquante ne
+  /// devait pas interrompre le nettoyage. Un document unique rend tout cela
+  /// sans objet.
   Future<void> _clearPastRdv() async {
     final now = DateTime.now();
-    final base = FirebaseFirestore.instance
-        .collection('users')
-        .doc(widget.parentUid)
-        .collection('comptes');
-    final snap = await base
-        .doc(widget.profileId)
-        .collection('rendezvous')
-        .where('datetime', isLessThan: Timestamp.fromDate(now))
-        .get();
-    if (snap.docs.isEmpty) {
+
+    final tous = await ApiService.instance.rendezVous(
+      profileId: widget.profileId,
+      limit: 1000,
+    );
+    final passes = tous.where((r) {
+      final d = asDateOrNull(r['datetime']);
+      return d != null && d.isBefore(now);
+    }).toList();
+
+    if (passes.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Aucun rendez-vous Passe')),
@@ -272,49 +270,32 @@ class _DashboardAssistantState extends State<DashboardAssistant> {
       }
       return;
     }
-    for (final d in snap.docs) {
-      final data = d.data();
-      final doctorId = (data['doctorId'] ?? '').toString();
-      final rdvId = d.id;
-      final deletes = <Future>[];
-      deletes.add(d.reference.delete());
-      if (doctorId.isNotEmpty) {
-        deletes.add(
-          base
-              .doc(doctorId)
-              .collection('rendezvous')
-              .doc(rdvId)
-              .delete()
-              .catchError((_) {}),
+
+    for (final r in passes) {
+      try {
+        await ApiService.instance.supprimerRendezVous(
+          (r['id'] ?? '').toString(),
         );
+      } catch (_) {
+        // Un echec isole ne doit pas interrompre le nettoyage.
       }
-      deletes.add(
-        base
-            .doc('medecin_principal')
-            .collection('rendezvous')
-            .doc(rdvId)
-            .delete()
-            .catchError((_) {}),
-      );
-      await Future.wait(deletes);
     }
+
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${snap.docs.length} RDV Passes supprimes')),
+        SnackBar(content: Text('${passes.length} RDV Passes supprimes')),
       );
     }
   }
 
   Future<void> _editMyProfile(BuildContext context) async {
-    final docRef = FirebaseFirestore.instance
-        .collection('users')
-        .doc(widget.parentUid)
-        .collection('comptes')
-        .doc(widget.profileId);
-
-    final snap = await docRef.get();
-    final currentName = (snap.data()?['name'] ?? _assistantName ?? '')
-        .toString();
+    final profil = await ApiService.instance.profils().then(
+      (liste) => liste.firstWhere(
+        (p) => p['id'] == widget.profileId,
+        orElse: () => <String, dynamic>{},
+      ),
+    );
+    final currentName = (profil['name'] ?? _assistantName ?? '').toString();
     final nameCtrl = TextEditingController(text: currentName);
 
     final res = await showDialog<bool>(
@@ -350,7 +331,7 @@ class _DashboardAssistantState extends State<DashboardAssistant> {
       return;
     }
 
-    await docRef.set({'name': newName}, SetOptions(merge: true));
+    await ApiService.instance.majProfil(widget.profileId, {'name': newName});
     if (mounted) {
       setState(() => _assistantName = newName);
       ScaffoldMessenger.of(
@@ -425,13 +406,10 @@ class _DashboardAssistantState extends State<DashboardAssistant> {
     }
 
     final protoMapToSave = _motifPrototypes.map((k, v) => MapEntry(k, v));
-    await FirebaseFirestore.instance
-        .collection('users')
-        .doc(widget.parentUid)
-        .set({
-          'motifsPredefinis': toSave,
-          'motifPrototypes': protoMapToSave,
-        }, SetOptions(merge: true));
+    await ApiService.instance.majCabinet({
+      'motifsPredefinis': toSave,
+      'motifPrototypes': protoMapToSave,
+    });
 
     if (!mounted) return;
     setState(() {
@@ -449,16 +427,11 @@ class _DashboardAssistantState extends State<DashboardAssistant> {
 
   Future<void> _refreshMotifs() async {
     try {
-      final userRef = FirebaseFirestore.instance
-          .collection('users')
-          .doc(widget.parentUid);
-      final parentSnap = await userRef.get();
+      final parentData = await ApiService.instance.cabinet();
       if (!mounted) return;
 
       List<String> fetchedMotifs = [];
       Map<String, List<String>> fetchedProtos = {};
-
-      final parentData = parentSnap.data() ?? {};
       final rawMotifs = parentData['motifsPredefinis'];
       if (rawMotifs is List) {
         fetchedMotifs = rawMotifs
@@ -482,13 +455,15 @@ class _DashboardAssistantState extends State<DashboardAssistant> {
       }
 
       if (fetchedMotifs.isEmpty || fetchedProtos.isEmpty) {
-        final profileSnap = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(widget.parentUid)
-            .collection('comptes')
-            .doc(widget.profileId)
-            .get();
-        final profileData = profileSnap.data() ?? {};
+        // Le repli sur le profil : Firestore gardait les motifs a deux
+        // endroits pour les cabinets d'avant leur introduction. Le backend
+        // n'en a plus qu'un, mais la lecture reste tolerante.
+        final profileData = await ApiService.instance.profils().then(
+          (liste) => liste.firstWhere(
+            (p) => p['id'] == widget.profileId,
+            orElse: () => <String, dynamic>{},
+          ),
+        );
         if (fetchedMotifs.isEmpty) {
           final profileMotifs = profileData['motifsPredefinis'];
           if (profileMotifs is List) {
@@ -514,11 +489,13 @@ class _DashboardAssistantState extends State<DashboardAssistant> {
             });
           }
         }
+        // Recopie sur le cabinet ce qui n'existait que sur le profil : les
+        // cabinets d'avant l'introduction des motifs les gardaient la.
         if (fetchedMotifs.isNotEmpty || fetchedProtos.isNotEmpty) {
-          await userRef.set({
+          await ApiService.instance.majCabinet({
             if (fetchedMotifs.isNotEmpty) 'motifsPredefinis': fetchedMotifs,
             if (fetchedProtos.isNotEmpty) 'motifPrototypes': fetchedProtos,
-          }, SetOptions(merge: true));
+          });
         }
       }
 
@@ -607,10 +584,9 @@ class _DashboardAssistantState extends State<DashboardAssistant> {
         .toList();
     _ensureVitals(fields);
     _motifPrototypes[selected] = fields;
-    await FirebaseFirestore.instance
-        .collection('users')
-        .doc(widget.parentUid)
-        .set({'motifPrototypes': _motifPrototypes}, SetOptions(merge: true));
+    await ApiService.instance.majCabinet({
+      'motifPrototypes': _motifPrototypes,
+    });
     if (mounted) {
       setState(() {});
       ScaffoldMessenger.of(
@@ -769,7 +745,7 @@ class _DashboardAssistantState extends State<DashboardAssistant> {
           tooltip: 'Deconnexion',
           icon: const Icon(Icons.logout, color: Colors.white),
           onPressed: () async {
-            await FirebaseAuth.instance.signOut();
+            await AuthService().signOut();
             if (context.mounted) {
               Navigator.pushNamedAndRemoveUntil(
                 context,
@@ -822,11 +798,13 @@ class _PurchasesCard extends StatelessWidget {
   }
 
   bool _createdToday(dynamic value) {
-    if (value is Timestamp) {
-      final d = value.toDate();
-      return d.year == DateTime.now().year &&
-          d.month == DateTime.now().month &&
-          d.day == DateTime.now().day;
+    // asDateOrNull accepte l'ISO du backend comme les Timestamp encore
+    // presents dans les donnees importees.
+    final t = asDateOrNull(value);
+    if (t != null) {
+      return t.year == DateTime.now().year &&
+          t.month == DateTime.now().month &&
+          t.day == DateTime.now().day;
     }
     if (value is DateTime) {
       return value.year == DateTime.now().year &&
@@ -836,36 +814,20 @@ class _PurchasesCard extends StatelessWidget {
     return false;
   }
 
-  bool _docBelongsToParent(DocumentSnapshot doc) {
-    final pathParts = doc.reference.path.split('/');
-    if (pathParts.length > 2 && pathParts[0] == 'users') {
-      if (pathParts[1] == parentUid) return true;
-    }
-    final data = doc.data() as Map<String, dynamic>?;
-    if (data != null && (data['parentUid'] ?? '') == parentUid) return true;
-    return false;
-  }
-
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final textPrimary = scheme.onSurface;
     final textMuted = scheme.onSurface.withOpacity(0.7);
-    final stream = FirebaseFirestore.instance
-        .collectionGroup('purchases')
-        .where('parentUid', isEqualTo: parentUid)
-        .where('dayKey', isEqualTo: _dayKey())
-        .snapshots();
+    final stream = ApiService.instance.achatsFlux();
 
-    return StreamBuilder<QuerySnapshot>(
+    return StreamBuilder<List<Map<String, dynamic>>>(
       stream: stream,
       builder: (context, snapshot) {
         double total = 0;
         int count = 0;
         if (snapshot.hasData) {
-          for (final d in snapshot.data!.docs) {
-            if (!_docBelongsToParent(d)) continue;
-            final data = d.data() as Map<String, dynamic>;
+          for (final data in snapshot.data!) {
             final day = (data['dayKey'] ?? '').toString();
             final created = data['createdAt'];
             final isToday = day == _dayKey() || _createdToday(created);
@@ -975,28 +937,21 @@ class _PurchasesHistoryState extends State<_PurchasesHistory> {
     final textPrimary = scheme.onSurface;
     final textMuted = scheme.onSurface.withOpacity(0.7);
     final textFaint = scheme.onSurface.withOpacity(0.5);
-    Query purchasesQuery;
-    if (widget.profileId == null) {
-      purchasesQuery = FirebaseFirestore.instance
-          .collectionGroup('purchases')
-          .where('parentUid', isEqualTo: widget.parentUid);
-    } else {
-      purchasesQuery = FirebaseFirestore.instance
-          .collection('users')
-          .doc(widget.parentUid)
-          .collection('comptes')
-          .doc(widget.profileId)
-          .collection('purchases');
-    }
-    if (widget.dayKey != null) {
-      purchasesQuery = purchasesQuery.where('dayKey', isEqualTo: widget.dayKey);
-    }
-    purchasesQuery = purchasesQuery
-        .orderBy('createdAt', descending: true)
-        .limit(_limit);
+    // Le collectionGroup traversait tous les cabinets ; le filtrage par
+    // profil et par jour se fait maintenant sur une liste deja restreinte
+    // au cabinet du jeton.
+    final purchasesStream = ApiService.instance.achatsFlux().map(
+      (liste) => liste.where((a) {
+        if (widget.profileId != null && a['profileId'] != widget.profileId) {
+          return false;
+        }
+        if (widget.dayKey != null && a['dayKey'] != widget.dayKey) return false;
+        return true;
+      }).toList(),
+    );
 
-    return StreamBuilder<QuerySnapshot>(
-      stream: purchasesQuery.snapshots(),
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      stream: purchasesStream,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
           return const Center(child: Text('Erreur de chargement des achats'));
@@ -1004,11 +959,14 @@ class _PurchasesHistoryState extends State<_PurchasesHistory> {
         if (!snapshot.hasData) {
           return const Center(child: CircularProgressIndicator());
         }
-        final docs = snapshot.data!.docs;
+        final tous = snapshot.data!;
+        // La limite s'applique a l'affichage : dans la requete, elle
+        // s'accompagnait d'un tri qui excluait les achats sans `createdAt`.
+        final docs = tous.length > _limit ? tous.sublist(0, _limit) : tous;
         if (docs.isEmpty) {
           return const Center(child: Text('Aucun achat'));
         }
-        final canLoadMore = docs.length >= _limit;
+        final canLoadMore = tous.length > _limit;
         return ListView.builder(
           itemCount: docs.length + (canLoadMore ? 1 : 0),
           itemBuilder: (context, index) {
@@ -1023,13 +981,11 @@ class _PurchasesHistoryState extends State<_PurchasesHistory> {
                 ),
               );
             }
-            final data = docs[index].data() as Map<String, dynamic>;
+            final data = docs[index];
             final produit = (data['produit'] ?? 'Produit').toString();
             final fournisseur = (data['fournisseur'] ?? '').toString();
             final montant = _toDouble(data['montant']);
-            final created = data['createdAt'] is Timestamp
-                ? (data['createdAt'] as Timestamp).toDate()
-                : null;
+            final created = asDateOrNull(data['createdAt']);
             final dateStr = created != null
                 ? '${created.day.toString().padLeft(2, '0')}/${created.month.toString().padLeft(2, '0')} ${created.hour.toString().padLeft(2, '0')}:${created.minute.toString().padLeft(2, '0')}'
                 : '';
@@ -1330,44 +1286,14 @@ class _PatientsTabState extends State<_PatientsTab> {
     setState(() => _deletingPatientIds.add(patientId));
 
     try {
-      final doctorId = (patient['doctorId'] ?? '').toString();
-      final assistantId = (patient['assistantId'] ?? '').toString();
-      final profileIds = <String>{
-        widget.profileId,
-        'medecin_principal',
-        if (doctorId.isNotEmpty) doctorId,
-        if (assistantId.isNotEmpty) assistantId,
-      };
-
-      final base = FirebaseFirestore.instance
-          .collection('users')
-          .doc(widget.parentUid)
-          .collection('comptes');
-
-      // Suppression douce : on marque le patient sur chaque copie de profil.
-      // Le dossier, les formulaires et les versements restent intacts.
-      final mark = deletionMark(
-        byProfileId: widget.profileId,
-        byName: widget.assistantName,
-      );
-      final batch = FirebaseFirestore.instance.batch();
-      for (final profileId in profileIds) {
-        batch.set(
-          base.doc(profileId).collection('patients').doc(patientId),
-          mark,
-          SetOptions(merge: true),
-        );
-      }
-      await batch.commit().timeout(const Duration(seconds: 15));
-
-      // Retrait des elements operationnels en arriere-plan.
-      unawaited(
-        _cleanupPatientRelatedDocs(
-          patientId: patientId,
-          profileIds: profileIds,
-          mark: mark,
-        ),
-      );
+      // Trois methodes tenaient ici : marquer les copies du dossier par
+      // batch, puis fermer en tache de fond les rendez-vous et les entrees
+      // de salle d'attente, puis les rouvrir a l'annulation.
+      //
+      // Le nettoyage se faisait **apres coup et sans transaction** : un
+      // patient supprime pouvait rester dans la file du medecin, qui
+      // l'appelait pour rien. Tout part maintenant ensemble, cote serveur.
+      await ApiService.instance.supprimerPatient(patientId);
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1375,7 +1301,8 @@ class _PatientsTabState extends State<_PatientsTab> {
             content: const Text('Patient retire — dossier conserve'),
             action: SnackBarAction(
               label: 'Annuler',
-              onPressed: () => _restorePatient(patientId, profileIds),
+              onPressed: () =>
+                  ApiService.instance.restaurerPatient(patientId),
             ),
             duration: const Duration(seconds: 8),
           ),
@@ -1384,129 +1311,11 @@ class _PatientsTabState extends State<_PatientsTab> {
     } catch (_) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Erreur lors de la suppression du patient'),
-          ),
+          const SnackBar(content: Text('Echec de la suppression')),
         );
       }
     } finally {
-      if (mounted) {
-        setState(() => _deletingPatientIds.remove(patientId));
-      }
-    }
-  }
-
-  /// Retire le patient de la vie courante du cabinet.
-  ///
-  /// Les formulaires ne sont plus touches : ils *sont* le dossier medical,
-  /// et c'est precisement ce que la suppression douce protege.
-  /// Les rendez-vous sont marques comme supprimes. Les lignes de salle
-  /// d'attente sont cloturees, parce qu'un patient retire ne doit pas
-  /// rester dans la file d'aujourd'hui.
-  Future<void> _cleanupPatientRelatedDocs({
-    required String patientId,
-    required Set<String> profileIds,
-    required Map<String, dynamic> mark,
-  }) async {
-    final base = FirebaseFirestore.instance
-        .collection('users')
-        .doc(widget.parentUid)
-        .collection('comptes');
-
-    for (final profileId in profileIds) {
-      final profileRef = base.doc(profileId);
-
-      try {
-        final rdvSnap = await profileRef
-            .collection('rendezvous')
-            .where('patientId', isEqualTo: patientId)
-            .get();
-        if (rdvSnap.docs.isNotEmpty) {
-          await Future.wait(
-            rdvSnap.docs.map(
-              (d) => d.reference
-                  .set(mark, SetOptions(merge: true))
-                  .catchError((_) {}),
-            ),
-          );
-        }
-      } catch (_) {}
-
-      try {
-        final waitingSnap = await profileRef
-            .collection('salle_attente')
-            .where('patientId', isEqualTo: patientId)
-            .get();
-        if (waitingSnap.docs.isNotEmpty) {
-          final closing = {
-            ...mark,
-            'status': 'done',
-            'closedAt': FieldValue.serverTimestamp(),
-          };
-          await Future.wait(
-            waitingSnap.docs.map(
-              (d) => d.reference
-                  .set(closing, SetOptions(merge: true))
-                  .catchError((_) {}),
-            ),
-          );
-        }
-      } catch (_) {}
-    }
-  }
-
-  /// Annule une suppression : le patient et ses rendez-vous reviennent.
-  /// Les lignes de salle d'attente restent cloturees — un patient restaure
-  /// n'a pas a reapparaitre dans la file d'une journee deja passee.
-  Future<void> _restorePatient(
-    String patientId,
-    Set<String> profileIds,
-  ) async {
-    final base = FirebaseFirestore.instance
-        .collection('users')
-        .doc(widget.parentUid)
-        .collection('comptes');
-    final undo = restorationMark();
-
-    try {
-      final batch = FirebaseFirestore.instance.batch();
-      for (final profileId in profileIds) {
-        batch.set(
-          base.doc(profileId).collection('patients').doc(patientId),
-          undo,
-          SetOptions(merge: true),
-        );
-      }
-      await batch.commit();
-
-      for (final profileId in profileIds) {
-        try {
-          final rdvSnap = await base
-              .doc(profileId)
-              .collection('rendezvous')
-              .where('patientId', isEqualTo: patientId)
-              .get();
-          await Future.wait(
-            rdvSnap.docs.map(
-              (d) => d.reference
-                  .set(undo, SetOptions(merge: true))
-                  .catchError((_) {}),
-            ),
-          );
-        } catch (_) {}
-      }
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Patient restaure')),
-        );
-      }
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Echec de la restauration')),
-        );
-      }
+      if (mounted) setState(() => _deletingPatientIds.remove(patientId));
     }
   }
 
@@ -2073,13 +1882,12 @@ class _AssistantRdvTabState extends State<_AssistantRdvTab> {
 
   Future<void> _loadWhatsappTemplate() async {
     try {
-      final ref = FirebaseFirestore.instance
-          .collection('users')
-          .doc(widget.parentUid)
-          .collection('comptes')
-          .doc(widget.profileId);
-      final snap = await ref.get();
-      final template = (snap.data()?['whatsappTemplate'] ?? '').toString();
+      final profils = await ApiService.instance.profils();
+      final moi = profils.firstWhere(
+        (p) => p['id'] == widget.profileId,
+        orElse: () => <String, dynamic>{},
+      );
+      final template = (moi['whatsappTemplate'] ?? '').toString();
       if (mounted) {
         setState(() => _whatsappTemplate = template);
       }
@@ -2089,15 +1897,10 @@ class _AssistantRdvTabState extends State<_AssistantRdvTab> {
   }
 
   Future<void> _saveWhatsappTemplate(String template) async {
-    final ref = FirebaseFirestore.instance
-        .collection('users')
-        .doc(widget.parentUid)
-        .collection('comptes')
-        .doc(widget.profileId);
-    await ref.set({
+    // L'horodatage de mise a jour est pose par le serveur.
+    await ApiService.instance.majProfil(widget.profileId, {
       'whatsappTemplate': template,
-      'whatsappTemplateUpdatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    });
     if (mounted) {
       setState(() => _whatsappTemplate = template);
     }
@@ -2188,73 +1991,32 @@ class _AssistantRdvTabState extends State<_AssistantRdvTab> {
     return _applyTemplate(template, values);
   }
 
+  /// Note qu'un rappel est parti.
+  ///
+  /// L'horodatage est pose par le serveur : l'heure d'un poste mal regle
+  /// ferait apparaitre des rappels envoyes dans le futur, et la fenetre
+  /// « disponible 1h avant » cesserait de tomber juste.
   Future<void> _markReminderSent(
     String rdvId,
     Map<String, dynamic> data,
   ) async {
-    final doctorId = (data['doctorId'] ?? '').toString();
-    final base = FirebaseFirestore.instance
-        .collection('users')
-        .doc(widget.parentUid)
-        .collection('comptes');
-    final update = {
-      'reminderSentAt': FieldValue.serverTimestamp(),
-      'reminderChannel': 'whatsapp',
-    };
-    final batch = FirebaseFirestore.instance.batch();
-    batch.set(
-      base.doc(widget.profileId).collection('rendezvous').doc(rdvId),
-      update,
-      SetOptions(merge: true),
-    );
-    if (doctorId.isNotEmpty) {
-      batch.set(
-        base.doc(doctorId).collection('rendezvous').doc(rdvId),
-        update,
-        SetOptions(merge: true),
-      );
-    }
-    batch.set(
-      base.doc('medecin_principal').collection('rendezvous').doc(rdvId),
-      update,
-      SetOptions(merge: true),
-    );
-    await batch.commit();
+    await ApiService.instance.majRendezVous(rdvId, {'reminderSentAt': true});
   }
 
+  /// Met le numero en cache sur le rendez-vous.
+  ///
+  /// Le fan-out ecrivait la meme valeur sur la copie du profil et sur celle
+  /// du medecin. Un seul document desormais.
   Future<void> _cachePatientTel(
     String rdvId,
     String tel,
     Map<String, dynamic> data,
   ) async {
-    final doctorId = (data['doctorId'] ?? '').toString();
-    final base = FirebaseFirestore.instance
-        .collection('users')
-        .doc(widget.parentUid)
-        .collection('comptes');
-    final update = {
-      'patientTel': tel,
-      'updatedAt': FieldValue.serverTimestamp(),
-    };
-    final batch = FirebaseFirestore.instance.batch();
-    batch.set(
-      base.doc(widget.profileId).collection('rendezvous').doc(rdvId),
-      update,
-      SetOptions(merge: true),
-    );
-    if (doctorId.isNotEmpty) {
-      batch.set(
-        base.doc(doctorId).collection('rendezvous').doc(rdvId),
-        update,
-        SetOptions(merge: true),
-      );
+    try {
+      await ApiService.instance.majRendezVous(rdvId, {'patientTel': tel});
+    } catch (_) {
+      // Un cache qui echoue n'empeche pas d'envoyer le rappel.
     }
-    batch.set(
-      base.doc('medecin_principal').collection('rendezvous').doc(rdvId),
-      update,
-      SetOptions(merge: true),
-    );
-    await batch.commit();
   }
 
   Future<void> _sendWhatsappReminder(
@@ -2280,15 +2042,8 @@ class _AssistantRdvTabState extends State<_AssistantRdvTab> {
     if (rawTel.isEmpty) {
       final patientId = (data['patientId'] ?? '').toString();
       if (patientId.isNotEmpty) {
-        final ref = FirebaseFirestore.instance
-            .collection('users')
-            .doc(widget.parentUid)
-            .collection('comptes')
-            .doc(widget.profileId)
-            .collection('patients')
-            .doc(patientId);
-        final snap = await ref.get();
-        rawTel = (snap.data()?['tel'] ?? '').toString().trim();
+        final dossier = await ApiService.instance.patient(patientId);
+        rawTel = (dossier['tel'] ?? '').toString().trim();
         if (rawTel.isNotEmpty) {
           await _cachePatientTel(rdvId, rawTel, data);
         }
@@ -2334,6 +2089,11 @@ class _AssistantRdvTabState extends State<_AssistantRdvTab> {
     }
   }
 
+  /// Deplace un rendez-vous.
+  ///
+  /// Le serveur revalide le creneau : deux postes peuvent poser la meme
+  /// heure a la meme seconde, et le controle cote Flutter ne le voit pas.
+  /// Un conflit revient en 409.
   Future<void> _updateRdv(
     BuildContext context,
     String rdvId,
@@ -2342,42 +2102,28 @@ class _AssistantRdvTabState extends State<_AssistantRdvTab> {
     String motif, [
     int? duree,
   ]) async {
-    final doctorId = (data['doctorId'] ?? '').toString();
-    final base = FirebaseFirestore.instance
-        .collection('users')
-        .doc(widget.parentUid)
-        .collection('comptes');
-    final updateData = {
-      'datetime': Timestamp.fromDate(newDateTime),
-      'motif': motif,
-      if (duree != null) 'duree': duree,
-      'updatedAt': FieldValue.serverTimestamp(),
-    };
-
-    final batch = FirebaseFirestore.instance.batch();
-    batch.set(
-      base.doc(widget.profileId).collection('rendezvous').doc(rdvId),
-      updateData,
-      SetOptions(merge: true),
-    );
-    if (doctorId.isNotEmpty) {
-      batch.set(
-        base.doc(doctorId).collection('rendezvous').doc(rdvId),
-        updateData,
-        SetOptions(merge: true),
+    try {
+      await ApiService.instance.majRendezVous(rdvId, {
+        'datetime': newDateTime.toIso8601String(),
+        'motif': motif,
+        if (duree != null) 'duree': duree,
+      });
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Rendez-vous mis a jour')),
+        );
+      }
+    } on ApiException catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            e.estConflit
+                ? 'Ce creneau vient d’etre pris'
+                : 'Echec de la mise a jour',
+          ),
+        ),
       );
-    }
-    batch.set(
-      base.doc('medecin_principal').collection('rendezvous').doc(rdvId),
-      updateData,
-      SetOptions(merge: true),
-    );
-    await batch.commit();
-
-    if (context.mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Rendez-vous mis a jour')));
     }
   }
 
@@ -2386,9 +2132,7 @@ class _AssistantRdvTabState extends State<_AssistantRdvTab> {
     String rdvId,
     Map<String, dynamic> data,
   ) async {
-    final currentDt = data['datetime'] is Timestamp
-        ? (data['datetime'] as Timestamp).toDate()
-        : DateTime.now();
+    final currentDt = asDateOrNull(data['datetime']) ?? DateTime.now();
     DateTime selectedDate = DateTime(
       currentDt.year,
       currentDt.month,
@@ -2508,22 +2252,9 @@ class _AssistantRdvTabState extends State<_AssistantRdvTab> {
 
     if (confirmed != true) return;
 
-    final doctorId = (data['doctorId'] ?? '').toString();
-    final base = FirebaseFirestore.instance
-        .collection('users')
-        .doc(widget.parentUid)
-        .collection('comptes');
-    final batch = FirebaseFirestore.instance.batch();
-    batch.delete(
-      base.doc(widget.profileId).collection('rendezvous').doc(rdvId),
-    );
-    if (doctorId.isNotEmpty) {
-      batch.delete(base.doc(doctorId).collection('rendezvous').doc(rdvId));
-    }
-    batch.delete(
-      base.doc('medecin_principal').collection('rendezvous').doc(rdvId),
-    );
-    await batch.commit();
+    // Un seul document : le batch effacait la copie du profil, celle du
+    // medecin, et celle du medecin principal.
+    await ApiService.instance.supprimerRendezVous(rdvId);
 
     if (context.mounted) {
       ScaffoldMessenger.of(
@@ -2539,20 +2270,18 @@ class _AssistantRdvTabState extends State<_AssistantRdvTab> {
     final textFaint = scheme.onSurface.withOpacity(0.5);
     final now = DateTime.now();
     final minDate = now.subtract(const Duration(days: _recentDays));
-    Query query = FirebaseFirestore.instance
-        .collection('users')
-        .doc(widget.parentUid)
-        .collection('comptes')
-        .doc(widget.profileId)
-        .collection('rendezvous')
-        .orderBy('datetime', descending: false);
-    if (!_showAll) {
-      query = query.where(
-        'datetime',
-        isGreaterThanOrEqualTo: Timestamp.fromDate(minDate),
-      );
-    }
-    query = query.limit(_limit);
+    // Le filtre de date passe en memoire : une contrainte serveur sur
+    // `datetime` ecarterait les rendez-vous qui n'en portent pas.
+    final query = ApiService.instance
+        .rendezVousFlux(profileId: widget.profileId)
+        .map(
+          (liste) => _showAll
+              ? liste
+              : liste.where((r) {
+                  final d = asDateOrNull(r['datetime']);
+                  return d == null || !d.isBefore(minDate);
+                }).toList(),
+        );
 
     return Column(
       children: [
@@ -2593,8 +2322,8 @@ class _AssistantRdvTabState extends State<_AssistantRdvTab> {
           ),
         ),
         Expanded(
-          child: StreamBuilder<QuerySnapshot>(
-            stream: query.snapshots(),
+          child: StreamBuilder<List<Map<String, dynamic>>>(
+            stream: query,
             builder: (context, snap) {
               if (snap.hasError) {
                 return const Center(
@@ -2604,11 +2333,17 @@ class _AssistantRdvTabState extends State<_AssistantRdvTab> {
               if (!snap.hasData) {
                 return const Center(child: CircularProgressIndicator());
               }
-              final allDocs = snap.data!.docs;
-              final canLoadMore = allDocs.length >= _limit;
+              final tous = snap.data!;
+              // La limite s'applique a l'affichage : dans la requete, elle
+              // s'accompagnait d'un tri qui ecartait les rendez-vous sans
+              // date.
+              final allDocs = tous.length > _limit
+                  ? tous.sublist(0, _limit)
+                  : tous;
+              final canLoadMore = tous.length > _limit;
               // Masque les rendez-vous des patients retires.
               final docs = allDocs
-                  .where((d) => !isDeleted(d.data() as Map<String, dynamic>))
+                  .where((d) => !isDeleted(d))
                   .toList();
               if (docs.isEmpty) {
                 return const Center(child: Text('Aucun Rendez-vous planifie'));
@@ -2629,11 +2364,9 @@ class _AssistantRdvTabState extends State<_AssistantRdvTab> {
                     );
                   }
                   final doc = docs[i];
-                  final d = doc.data() as Map<String, dynamic>;
-                  final rdvId = doc.id;
-                  final dt = d['datetime'] is Timestamp
-                      ? (d['datetime'] as Timestamp).toDate()
-                      : null;
+                  final d = doc;
+                  final rdvId = doc['id'].toString();
+                  final dt = asDateOrNull(d['datetime']);
                   final isPast = dt != null && dt.isBefore(now);
                   final reminderSent = d['reminderSentAt'] != null;
                   final rawTel = (d['patientTel'] ?? d['tel'] ?? '').toString();
@@ -2922,23 +2655,18 @@ class _RendezVousTabState extends State<_RendezVousTab> {
     final recentCutoff = startOfDay.subtract(
       const Duration(days: _lookbackDays),
     );
-    Query<Map<String, dynamic>> ref = FirebaseFirestore.instance
-        .collection('users')
-        .doc(widget.parentUid)
-        .collection('comptes')
-        .doc(widget.profileId)
-        .collection('salle_attente')
-        .orderBy('createdAt', descending: true);
-    if (!_showAll) {
-      ref = ref.where(
-        'createdAt',
-        isGreaterThanOrEqualTo: Timestamp.fromDate(recentCutoff),
-      );
-    }
-    ref = ref.limit(_limit);
-    final stream = ref.snapshots();
+    final stream = ApiService.instance
+        .salleAttenteFlux(profileId: widget.profileId)
+        .map(
+          (liste) => _showAll
+              ? liste
+              : liste.where((e) {
+                  final c = asDateOrNull(e['createdAt']);
+                  return c == null || !c.isBefore(recentCutoff);
+                }).toList(),
+        );
 
-    return StreamBuilder<QuerySnapshot>(
+    return StreamBuilder<List<Map<String, dynamic>>>(
       stream: stream,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
@@ -2950,16 +2678,14 @@ class _RendezVousTabState extends State<_RendezVousTab> {
           return const Center(child: CircularProgressIndicator());
         }
 
-        final docs = snapshot.data!.docs;
-        final waiting = <QueryDocumentSnapshot>[];
-        final inConsultation = <QueryDocumentSnapshot>[];
-        final historyToday = <QueryDocumentSnapshot>[];
+        final docs = snapshot.data!;
+        final waiting = <Map<String, dynamic>>[];
+        final inConsultation = <Map<String, dynamic>>[];
+        final historyToday = <Map<String, dynamic>>[];
 
-        for (final d in docs) {
-          final data = d.data() as Map<String, dynamic>;
+        for (final data in docs) {
           final status = (data['status'] ?? '').toString();
-          final closed = data['closedAt'];
-          final closedTs = closed is Timestamp ? closed.toDate() : null;
+          final closedTs = asDateOrNull(data['closedAt']);
           final isDone = status == 'done' || closedTs != null;
           if (isDone) {
             if (closedTs != null &&
@@ -2967,15 +2693,15 @@ class _RendezVousTabState extends State<_RendezVousTab> {
                   startOfDay.subtract(const Duration(milliseconds: 1)),
                 ) &&
                 closedTs.isBefore(endOfDay)) {
-              historyToday.add(d);
+              historyToday.add(data);
             }
             continue;
           }
           if (status == 'in_consultation') {
-            inConsultation.add(d);
+            inConsultation.add(data);
             continue;
           }
-          waiting.add(d);
+          waiting.add(data);
         }
 
         final openEntries = [...waiting, ...inConsultation];
@@ -3044,7 +2770,7 @@ class _RendezVousTabState extends State<_RendezVousTab> {
                   else
                     ...List.generate(inConsultation.length, (index) {
                       final data =
-                          inConsultation[index].data() as Map<String, dynamic>;
+                          inConsultation[index];
                       final patient = (data['patientNom'] ?? 'Patient')
                           .toString();
                       final doctor =
@@ -3055,9 +2781,7 @@ class _RendezVousTabState extends State<_RendezVousTab> {
                               .toString();
                       final seancesTotal = _toInt(data['nombreSeances']);
                       final seancesDone = _toInt(data['seancesEffectuees']);
-                      final started = data['inConsultationAt'] is Timestamp
-                          ? (data['inConsultationAt'] as Timestamp).toDate()
-                          : null;
+                      final started = asDateOrNull(data['inConsultationAt']);
                       final startStr = started != null
                           ? '${started.hour.toString().padLeft(2, '0')}:${started.minute.toString().padLeft(2, '0')}'
                           : '';
@@ -3094,7 +2818,7 @@ if (doctor.isNotEmpty) 'Dr $doctor',
                               ElevatedButton(
                                 onPressed:
                                     _closingWaitingIds.contains(
-                                      inConsultation[index].id,
+                                      inConsultation[index]['id'].toString(),
                                     )
                                     ? null
                                     : () => _cloturerPatient(
@@ -3103,7 +2827,7 @@ if (doctor.isNotEmpty) 'Dr $doctor',
                                       ),
                                 child:
                                     _closingWaitingIds.contains(
-                                      inConsultation[index].id,
+                                      inConsultation[index]['id'].toString(),
                                     )
                                     ? Row(
                                         mainAxisAlignment:
@@ -3149,7 +2873,7 @@ if (doctor.isNotEmpty) 'Dr $doctor',
                       physics: const NeverScrollableScrollPhysics(),
                       itemBuilder: (context, index) {
                         final data =
-                            waiting[index].data() as Map<String, dynamic>;
+                            waiting[index];
                         final patient = (data['patientNom'] ?? 'Patient')
                             .toString();
                         final doctor =
@@ -3160,9 +2884,7 @@ if (doctor.isNotEmpty) 'Dr $doctor',
                                 .toString();
                         final seancesTotal = _toInt(data['nombreSeances']);
                         final seancesDone = _toInt(data['seancesEffectuees']);
-                        final created = data['createdAt'] is Timestamp
-                            ? (data['createdAt'] as Timestamp).toDate()
-                            : null;
+                        final created = asDateOrNull(data['createdAt']);
                         final createdStr = created != null
                             ? '${created.hour.toString().padLeft(2, '0')}:${created.minute.toString().padLeft(2, '0')}'
                             : '';
@@ -3224,7 +2946,7 @@ if (doctor.isNotEmpty) 'Dr $doctor',
                             itemCount: historyToday.length,
                             itemBuilder: (context, index) {
                               final data =
-                                  historyToday[index].data()
+                                  historyToday[index]
                                       as Map<String, dynamic>;
                               final patient = (data['patientNom'] ?? 'Patient')
                                   .toString();
@@ -3242,9 +2964,7 @@ if (doctor.isNotEmpty) 'Dr $doctor',
                               final seancesDone = _toInt(
                                 data['seancesEffectuees'],
                               );
-                              final closed = data['closedAt'] is Timestamp
-                                  ? (data['closedAt'] as Timestamp).toDate()
-                                  : null;
+                              final closed = asDateOrNull(data['closedAt']);
                               final closedStr = closed != null
                                   ? '${closed.hour.toString().padLeft(2, '0')}:${closed.minute.toString().padLeft(2, '0')}'
                                   : '';
@@ -3285,17 +3005,17 @@ if (doctor.isNotEmpty) 'Dr $doctor',
 
   Future<void> _cloturerJournee(
     BuildContext context,
-    List<QueryDocumentSnapshot> openEntries,
+    List<Map<String, dynamic>> openEntries,
   ) async {
     if (openEntries.isEmpty) return;
     final futures = <Future>[];
     for (final d in openEntries) {
-      final data = d.data() as Map<String, dynamic>;
+      final data = d;
       futures.add(
         widget.waitingService.closeEntryForAll(
           parentUid: widget.parentUid,
           profileId: widget.profileId,
-          waitingId: d.id,
+          waitingId: d['id'].toString(),
           doctorId: (data['doctorId'] ?? '').toString(),
           assistantId: (data['assistantId'] ?? '').toString(),
           patientId: (data['patientId'] ?? '').toString(),
@@ -3312,13 +3032,13 @@ if (doctor.isNotEmpty) 'Dr $doctor',
 
   Future<void> _startConsultation(
     BuildContext context,
-    QueryDocumentSnapshot doc,
+    Map<String, dynamic> doc,
   ) async {
-    final data = doc.data() as Map<String, dynamic>;
+    final data = doc;
     await widget.waitingService.markInConsultation(
       parentUid: widget.parentUid,
       profileId: widget.profileId,
-      waitingId: doc.id,
+      waitingId: doc['id'].toString(),
       doctorId: (data['doctorId'] ?? '').toString(),
       assistantId: (data['assistantId'] ?? '').toString(),
     );
@@ -3339,13 +3059,12 @@ if (doctor.isNotEmpty) 'Dr $doctor',
     required double nouveauTotal,
   }) async {
     try {
-      final profil = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(widget.parentUid)
-          .collection('comptes')
-          .doc(widget.profileId)
-          .get();
-      final p = profil.data() ?? {};
+      final p = await ApiService.instance.profils().then(
+        (liste) => liste.firstWhere(
+          (x) => x['id'] == widget.profileId,
+          orElse: () => <String, dynamic>{},
+        ),
+      );
 
       final patient = [
         (patientData['nom'] ?? '').toString(),
@@ -3392,9 +3111,9 @@ if (doctor.isNotEmpty) 'Dr $doctor',
 
   Future<void> _addVersement(
     BuildContext context,
-    QueryDocumentSnapshot doc,
+    Map<String, dynamic> doc,
   ) async {
-    final data = doc.data() as Map<String, dynamic>;
+    final data = doc;
     final patientId = (data['patientId'] ?? '').toString();
     if (patientId.isEmpty) {
       if (context.mounted) {
@@ -3405,16 +3124,12 @@ if (doctor.isNotEmpty) 'Dr $doctor',
       return;
     }
 
-    final base = FirebaseFirestore.instance
-        .collection('users')
-        .doc(widget.parentUid)
-        .collection('comptes');
-    final patientRef = base
-        .doc(widget.profileId)
-        .collection('patients')
-        .doc(patientId);
-    final patientSnap = await patientRef.get();
-    final patientData = patientSnap.data();
+    Map<String, dynamic>? patientData;
+    try {
+      patientData = await ApiService.instance.patient(patientId);
+    } catch (_) {
+      patientData = null;
+    }
     if (patientData == null) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -3423,6 +3138,7 @@ if (doctor.isNotEmpty) 'Dr $doctor',
       }
       return;
     }
+    final dossier = patientData;
 
     final reglement = Reglement.fromPatient(patientData);
     final currentTotal = reglement.verse;
@@ -3490,64 +3206,19 @@ if (doctor.isNotEmpty) 'Dr $doctor',
     }
 
     final newTotal = currentTotal + montant;
-    final newEntry = {
-      'montant': montant,
-      'createdAt': Timestamp.now(),
-      'dayKey': _todayKey(),
-      'auteurProfileId': widget.profileId,
-    };
-
     try {
-      final doctorId = (patientData['doctorId'] ?? '').toString();
-      final doctorRef = doctorId.isNotEmpty
-          ? base.doc(doctorId).collection('patients').doc(patientId)
-          : null;
-
-      // arrayUnion faisait grossir le tableau sans limite. Un document
-      // Firestore plafonne a 1 Mo : vers quelques milliers de versements
-      // l'ecriture aurait ete rejetee, en silence — le patient reparti,
-      // l'argent nulle part.
+      // Le versement, le total du dossier, le cache borne et la
+      // statistique du jour partaient en quatre ecritures : un batch sur
+      // les copies du dossier, puis une seconde ecriture pour les stats.
+      // Chacune pouvait echouer seule et fausser les chiffres du cabinet.
       //
-      // La sous-collection garde tout. Le tableau devient un cache borne
-      // aux plus recents, parce que le graphique du tableau de bord agrege
-      // les versements de tous les patients depuis leurs seuls documents :
-      // le supprimer imposerait une requete par patient.
-      final cache = versementsBornes(patientData['versements'], newEntry);
-      final versementId = FirebaseFirestore.instance
-          .collection('tmp')
-          .doc()
-          .id;
-
-      final batch = FirebaseFirestore.instance.batch();
-      batch.set(patientRef, {
-        'totalVersements': newTotal,
-        'versements': cache,
-        'parentUid': widget.parentUid,
-      }, SetOptions(merge: true));
-      batch.set(
-        patientRef.collection('versements').doc(versementId),
-        {...newEntry, 'parentUid': widget.parentUid},
-      );
-      if (doctorRef != null) {
-        batch.set(doctorRef, {
-          'totalVersements': newTotal,
-          'versements': cache,
-          'parentUid': widget.parentUid,
-        }, SetOptions(merge: true));
-        batch.set(
-          doctorRef.collection('versements').doc(versementId),
-          {...newEntry, 'parentUid': widget.parentUid},
-        );
-      }
-      await batch.commit();
-      await StatsService().addVersement(
-        parentUid: widget.parentUid,
+      // C'est une transaction serveur. Le total passe par `$inc` au lieu
+      // d'etre lu puis reecrit : deux postes qui encaissent en meme temps
+      // ne s'ecrasent plus.
+      await ApiService.instance.encaisser(
+        patientId: patientId,
         montant: montant,
-        doctorId: doctorId,
-        doctorName: (patientData['assignedMedecinName'] ??
-                patientData['doctorName'] ??
-                '')
-            .toString(),
+        auteurProfileId: widget.profileId,
       );
 
       if (context.mounted) {
@@ -3560,7 +3231,7 @@ if (doctor.isNotEmpty) 'Dr $doctor',
             action: SnackBarAction(
               label: 'Imprimer le recu',
               onPressed: () => _imprimerRecu(
-                patientData: patientData,
+                patientData: dossier,
                 montant: montant,
                 nouveauTotal: newTotal,
               ),
@@ -3580,11 +3251,11 @@ if (doctor.isNotEmpty) 'Dr $doctor',
 
   Future<void> _cloturerPatient(
     BuildContext context,
-    QueryDocumentSnapshot doc,
+    Map<String, dynamic> doc,
   ) async {
-    if (_closingWaitingIds.contains(doc.id)) return;
-    setState(() => _closingWaitingIds.add(doc.id));
-    final data = doc.data() as Map<String, dynamic>;
+    if (_closingWaitingIds.contains(doc['id'].toString())) return;
+    setState(() => _closingWaitingIds.add(doc['id'].toString()));
+    final data = doc;
     try {
       await _incrementSeancePatient(data);
       final updatedDone =
@@ -3592,7 +3263,7 @@ if (doctor.isNotEmpty) 'Dr $doctor',
       await widget.waitingService.closeEntryForAll(
         parentUid: widget.parentUid,
         profileId: widget.profileId,
-        waitingId: doc.id,
+        waitingId: doc['id'].toString(),
         doctorId: (data['doctorId'] ?? '').toString(),
         assistantId: (data['assistantId'] ?? '').toString(),
         patientId: (data['patientId'] ?? '').toString(),
@@ -3605,43 +3276,23 @@ if (doctor.isNotEmpty) 'Dr $doctor',
       }
     } finally {
       if (mounted) {
-        setState(() => _closingWaitingIds.remove(doc.id));
+        setState(() => _closingWaitingIds.remove(doc['id'].toString()));
       }
     }
   }
 
+  /// Decompte une seance.
+  ///
+  /// Le batch ecrivait l'increment sur les trois copies du dossier — celle
+  /// du profil, celle du medecin, celle de l'assistant — parce que
+  /// Firestore n'avait pas de document unique. Il n'y en a plus qu'un.
   Future<void> _incrementSeancePatient(Map<String, dynamic> data) async {
     final patientId = (data['patientId'] ?? '').toString();
     if (patientId.isEmpty) return;
-    final doctorId = (data['doctorId'] ?? '').toString();
-    final assistantId = (data['assistantId'] ?? '').toString();
-    final base = FirebaseFirestore.instance
-        .collection('users')
-        .doc(widget.parentUid)
-        .collection('comptes');
-    final updates = {'seancesEffectuees': FieldValue.increment(1)};
-    final batch = FirebaseFirestore.instance.batch();
-    batch.set(
-      base.doc(widget.profileId).collection('patients').doc(patientId),
-      updates,
-      SetOptions(merge: true),
-    );
-    if (doctorId.isNotEmpty && doctorId != widget.profileId) {
-      batch.set(
-        base.doc(doctorId).collection('patients').doc(patientId),
-        updates,
-        SetOptions(merge: true),
-      );
-    }
-    if (assistantId.isNotEmpty &&
-        assistantId != widget.profileId &&
-        assistantId != doctorId) {
-      batch.set(
-        base.doc(assistantId).collection('patients').doc(patientId),
-        updates,
-        SetOptions(merge: true),
-      );
-    }
-    await batch.commit();
+
+    final dossier = await ApiService.instance.patient(patientId);
+    await ApiService.instance.majPatient(patientId, {
+      'seancesEffectuees': asInt(dossier['seancesEffectuees']) + 1,
+    });
   }
 }
