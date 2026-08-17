@@ -286,6 +286,18 @@ const FormSchema = new Schema(
     seanceNumero: { type: String, default: '' },
     note_de_seance: { type: String, default: '' },
 
+    /**
+     * La visite dont ce document fait partie.
+     *
+     * Le dossier patient se lit par visite : la consultation, l'ordonnance
+     * qu'elle a produite et le bilan demande le meme jour forment un tout.
+     *
+     * Absent des documents anterieurs, et c'est prevu : le regroupement
+     * retombe alors sur le jour de creation, ce qui donne le bon resultat sur
+     * tout l'historique sans migration.
+     */
+    visiteId: { type: String, default: '', index: true },
+
     createdAt: { type: Date, default: Date.now, index: true },
   },
   options

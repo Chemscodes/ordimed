@@ -98,6 +98,17 @@ class _ConsultationPageState extends State<ConsultationPage> {
   static const int _dernierStep = 3;
   static const _titres = ['Le patient', 'Examen', 'Conclusion', 'Clôture'];
 
+  /// Ce qui lie entre eux les documents de cette consultation.
+  ///
+  /// Le dossier patient se lit par visite : la consultation, l'ordonnance
+  /// qu'elle produit et le bilan demande dans la meme foulee forment un tout.
+  /// Sans cet identifiant, le regroupement retombe sur le jour — ce qui marche,
+  /// mais fusionne deux visites d'un meme patient le meme jour.
+  ///
+  /// Tire une fois, a l'ouverture de l'ecran : le regenerer a chaque ecriture
+  /// disperserait les documents d'une meme consultation.
+  final String _visiteId = 'v${DateTime.now().microsecondsSinceEpoch}';
+
   String get _patientId => asText(widget.waitingData['patientId']);
 
   /// Le dossier, tenu a jour.
@@ -177,6 +188,7 @@ class _ConsultationPageState extends State<ConsultationPage> {
       // aurait suffi jusqu'au jour où quelqu'un change une virgule.
       await ApiService.instance.creerDocument({
         'patientId': _patientId,
+        'visiteId': _visiteId,
         'type': 'Consultation',
         if (poids != null) 'poids': poids,
         if (taille != null) 'taille': taille,

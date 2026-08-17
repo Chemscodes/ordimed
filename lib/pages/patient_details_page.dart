@@ -15,6 +15,7 @@ import '../ui/fluent_button.dart';
 import 'consultation_page.dart';
 import '../core/coerce.dart';
 import '../core/versements.dart';
+import '../core/visite.dart';
 import '../ui/info_display.dart';
 import '../ui/liberer.dart';
 import '../core/clinical.dart';
@@ -3872,23 +3873,9 @@ Widget _renderFormGroups(
       return bt.compareTo(at);
     });
 
-  final medForms = <Map<String, dynamic>>[];
-  final ordonnanceForms = <Map<String, dynamic>>[];
-  final bilanForms = <Map<String, dynamic>>[];
-  final otherForms = <Map<String, dynamic>>[];
-  for (final f in sorted) {
-    final data = f;
-    final type = (data['type'] ?? '').toString().toLowerCase();
-    if (type.contains('ordonnance')) {
-      ordonnanceForms.add(f);
-    } else if (type.contains('bilan')) {
-      bilanForms.add(f);
-    } else if (type.contains('medecin')) {
-      medForms.add(f);
-    } else {
-      otherForms.add(f);
-    }
-  }
+  // La classification par type vivait ici — quatre listes, une par famille de
+  // document. Le regroupement par visite l'a rendue inutile : `TypeDocument`
+  // s'en charge, et il n'y a plus de liste a maintenir.
 
   final patientBasics = _patientBasics(
     patientData,
@@ -4159,106 +4146,173 @@ Widget _renderFormGroups(
     );
   }
 
-  void showFormsDialog(String title, List<Map<String, dynamic>> forms) {
-    if (forms.isEmpty) return;
-    showDialog<void>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: Text(title),
-        content: SizedBox(
-          width: 640,
-          height: 520,
-          child: ListView(
-            children: forms.map((doc) {
-              final data = doc;
-              final formTitle = (data['type'] ?? title).toString();
-              final meta = _formMetaLine(data);
-              return buildFormCard(
-                doc,
-                title: formTitle,
-                fallbackFields: patientBasics,
-                emptyLabel: title,
-                allowEdit: false,
-                metaLine: meta,
-              );
-            }).toList(),
-          ),
+  // Le dossier groupait par type : les ordonnances derriere un bouton
+  // « Afficher ordonnances (3) », les formulaires medecin dans une liste, les
+  // notes dans une autre. Repondre a « qu'ai-je fait le 3 mars ? » demandait
+  // de parcourir quatre listes et de recouper les dates de tete.
+  //
+  // Un dossier medical se lit par visite. `buildFormCard` est conserve tel
+  // quel : seule l'organisation change, pas l'affichage d'un document.
+  final visites = grouperEnVisites(sorted);
+
+  if (visites.isEmpty) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 20),
+      child: Center(
+        child: Text(
+          'Aucun document pour ce patient.',
+          style: TextStyle(fontStyle: FontStyle.italic, color: textMuted),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Fermer'),
-          ),
-        ],
       ),
+    );
+  }
+
+  Widget carteDe(Map<String, dynamic> data) {
+    final type = TypeDocument.depuis(data['type']);
+    return buildFormCard(
+      data,
+      title: type == TypeDocument.note
+          ? ((data['type'] ?? 'Note').toString().trim().isEmpty
+                ? 'Note'
+                : (data['type']).toString())
+          : type.libelle,
+      fallbackFields: type == TypeDocument.formulaire
+          ? patientBasics
+          : patientDetails,
+      emptyLabel: type.libelle,
+      // Une ordonnance et un bilan sont des pieces remises au patient : les
+      // rouvrir apres coup ferait diverger le papier et le dossier.
+      allowEdit:
+          type != TypeDocument.ordonnance && type != TypeDocument.bilan,
+      metaLine: _formMetaLine(data),
     );
   }
 
   return Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      if (medForms.isNotEmpty ||
-          ordonnanceForms.isNotEmpty ||
-          bilanForms.isNotEmpty) ...[
-        Text('Formulaires medecin', style: titleStyle),
-        const SizedBox(height: 8),
-        if (ordonnanceForms.isNotEmpty || bilanForms.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                if (ordonnanceForms.isNotEmpty)
-                  OutlinedButton(
-                    onPressed: () =>
-                        showFormsDialog('Ordonnances', ordonnanceForms),
-                    child: Text(
-                      'Afficher ordonnances (${ordonnanceForms.length})',
-                    ),
-                  ),
-                if (bilanForms.isNotEmpty)
-                  OutlinedButton(
-                    onPressed: () =>
-                        showFormsDialog('Demandes de bilan', bilanForms),
-                    child: Text('Afficher bilan (${bilanForms.length})'),
-                  ),
+      for (var i = 0; i < visites.length; i++)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: cardGradient,
+              borderRadius: BorderRadius.circular(AppTheme.rCard),
+              border: Border.all(color: borderColor),
+              boxShadow: [
+                BoxShadow(
+                  color: shadowColor,
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
               ],
             ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(AppTheme.rCard),
+              child: Theme(
+                // ExpansionTile trace ses propres lignes de separation, qui
+                // doublent la bordure de la carte.
+                data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                child: ExpansionTile(
+                  // La visite la plus recente est ouverte : c'est celle qu'on
+                  // vient chercher neuf fois sur dix.
+                  initiallyExpanded: i == 0,
+                  tilePadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 4,
+                  ),
+                  childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                  title: _EnteteVisite(visite: visites[i]),
+                  children: [
+                    for (final d in visites[i].documents) carteDe(d),
+                  ],
+                ),
+              ),
+            ),
           ),
-        ...medForms.map((doc) {
-          final data = doc;
-          return buildFormCard(
-            doc,
-            title: (data['type'] ?? 'Formulaire').toString(),
-            fallbackFields: patientBasics,
-            emptyLabel: 'Formulaire medecin',
-            allowEdit: true,
-          );
-        }),
-      ],
-      if (otherForms.isNotEmpty) ...[
-        const SizedBox(height: 12),
-        Text('Formulaires assistant / notes', style: titleStyle),
-        const SizedBox(height: 8),
-        ...otherForms.map((doc) {
-          final data = doc;
-          final rawType = (data['type'] ?? '').toString().trim();
-          final displayType =
-              rawType.isEmpty || rawType.toLowerCase().contains('dossier')
-              ? 'Formulaire assistant'
-              : rawType;
-          return buildFormCard(
-            doc,
-            title: displayType,
-            fallbackFields: patientDetails,
-            emptyLabel: 'Formulaire assistant',
-            allowEdit: true,
-          );
-        }),
-      ],
+        ),
     ],
   );
+}
+
+/// L'en-tete d'une visite : quand, laquelle, et ce qu'elle a produit.
+///
+/// Le resume permet de lire une journee sans la deplier — c'est ce qui evite
+/// d'ouvrir six visites pour retrouver une ordonnance.
+class _EnteteVisite extends StatelessWidget {
+  final Visite visite;
+
+  const _EnteteVisite({required this.visite});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            if (visite.numero > 0)
+              Container(
+                margin: const EdgeInsets.only(right: 10),
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                decoration: BoxDecoration(
+                  color: Color.alphaBlend(
+                    scheme.primary.withValues(alpha: 0.14),
+                    scheme.surface,
+                  ),
+                  borderRadius: BorderRadius.circular(AppTheme.rPill),
+                  border: Border.all(
+                    color: scheme.primary.withValues(alpha: 0.35),
+                  ),
+                ),
+                child: Text(
+                  'Visite ${visite.numero}',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.2,
+                    color: Color.lerp(scheme.primary, scheme.onSurface, 0.25),
+                  ),
+                ),
+              ),
+            Expanded(
+              child: Text(
+                visite.sansDate
+                    ? 'Date inconnue'
+                    : fmt.capitalize(fmt.relativeDay(visite.date)),
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.2,
+                ),
+              ),
+            ),
+            if (!visite.sansDate)
+              Text(
+                fmt.date(visite.date),
+                style: TextStyle(
+                  fontSize: 12,
+                  color: scheme.onSurface.withValues(alpha: 0.55),
+                ),
+              ),
+          ],
+        ),
+        if (visite.resume.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text(
+            visite.resume.join('  ·  '),
+            style: TextStyle(
+              fontSize: 12.5,
+              color: scheme.onSurface.withValues(alpha: 0.65),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
 }
 
 String formatLabelGlobal(String raw) {

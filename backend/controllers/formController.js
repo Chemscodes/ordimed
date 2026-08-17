@@ -51,6 +51,7 @@ exports.creer = async (req, res) => {
       ordonnanceNumero: c.asText(req.body.ordonnanceNumero),
       seanceNumero: c.asText(req.body.seanceNumero),
       note_de_seance: c.asText(req.body.note_de_seance),
+      visiteId: c.asText(req.body.visiteId),
       createdAt: new Date(),
     })
   );
