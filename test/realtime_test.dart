@@ -192,4 +192,103 @@ void main() {
 
     expect(appels, avant);
   });
+  test('le flux peut etre ecoute deux fois', () async {
+    // Le defaut qui a produit « Bad state: Stream has already been listened
+    // to » : un ecran gardait le flux dans un champ et le donnait a deux
+    // StreamBuilder — l'etape 1 et l'etape 4 de la consultation guidee.
+    final declencheur = StreamController<void>.broadcast();
+    addTearDown(declencheur.close);
+
+    final flux = RealtimeService.fluxDepuis(
+      charger: () async => 'valeur',
+      declencheurs: [declencheur.stream],
+      groupage: rapide,
+    );
+
+    final a = <String>[];
+    final b = <String>[];
+    final s1 = flux.listen(a.add);
+    final s2 = flux.listen(b.add);
+    addTearDown(s1.cancel);
+    addTearDown(s2.cancel);
+
+    await Future<void>.delayed(rapide * 3);
+    expect(a, isNotEmpty);
+    expect(b, isNotEmpty);
+  });
+
+  test('un second abonne recoit les donnees sans attendre un changement', () async {
+    // Un controleur diffuse ne rejoue pas ce qui est deja passe : sans
+    // rechargement a l'abonnement, le second ecran resterait vide jusqu'a la
+    // prochaine ecriture ailleurs dans le cabinet.
+    final declencheur = StreamController<void>.broadcast();
+    addTearDown(declencheur.close);
+
+    final flux = RealtimeService.fluxDepuis(
+      charger: () async => 'valeur',
+      declencheurs: [declencheur.stream],
+      groupage: rapide,
+    );
+
+    final s1 = flux.listen((_) {});
+    addTearDown(s1.cancel);
+    await Future<void>.delayed(rapide * 3);
+
+    // Le second arrive apres coup, sans qu'aucun evenement ne survienne.
+    final tardif = <String>[];
+    final s2 = flux.listen(tardif.add);
+    addTearDown(s2.cancel);
+    await Future<void>.delayed(rapide * 3);
+
+    expect(tardif, ['valeur']);
+  });
+
+  test('reecouter apres annulation fonctionne', () async {
+    // Le cas exact du retour en arriere : l'ecran est demonte, son abonnement
+    // annule, puis le meme flux est reecoute quand l'etape revient.
+    var appels = 0;
+    final declencheur = StreamController<void>.broadcast();
+    addTearDown(declencheur.close);
+
+    final flux = RealtimeService.fluxDepuis(
+      charger: () async => ++appels,
+      declencheurs: [declencheur.stream],
+      groupage: rapide,
+    );
+
+    final s1 = flux.listen((_) {});
+    await Future<void>.delayed(rapide * 3);
+    await s1.cancel();
+
+    final recu = <int>[];
+    final s2 = flux.listen(recu.add);
+    addTearDown(s2.cancel);
+    await Future<void>.delayed(rapide * 3);
+
+    expect(recu, isNotEmpty, reason: 'le flux doit revivre apres annulation');
+  });
+
+  test('les declencheurs sont debranches quand plus personne n ecoute', () async {
+    // Un ecran ferme qui continue d'interroger le serveur, c'est une fuite qui
+    // grandit a chaque navigation.
+    var appels = 0;
+    final declencheur = StreamController<void>.broadcast();
+    addTearDown(declencheur.close);
+
+    final flux = RealtimeService.fluxDepuis(
+      charger: () async => ++appels,
+      declencheurs: [declencheur.stream],
+      groupage: rapide,
+    );
+
+    final s1 = flux.listen((_) {});
+    await Future<void>.delayed(rapide * 3);
+    await s1.cancel();
+    final avant = appels;
+
+    declencheur.add(null);
+    await Future<void>.delayed(rapide * 4);
+
+    expect(appels, avant);
+  });
 }

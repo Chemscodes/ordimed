@@ -117,31 +117,43 @@ class RealtimeService {
     required List<Stream<void>> declencheurs,
     Duration groupage = const Duration(milliseconds: 120),
   }) {
-    late StreamController<T> controleur;
+    /// Diffusé, et non à abonnement unique.
+    ///
+    /// La première version rendait un `StreamController` ordinaire : écoutable
+    /// une seule fois. Un écran qui gardait le flux dans un champ et le
+    /// donnait à deux `StreamBuilder` — ou qui revenait sur une étape déjà
+    /// affichée — obtenait :
+    ///
+    ///     Bad state: Stream has already been listened to
+    ///
+    /// Le défaut était dans cette fabrique, pas dans les écrans : un flux de
+    /// lecture doit pouvoir être lu plusieurs fois.
+    final diffusion = StreamController<T>.broadcast();
+
     final abonnements = <StreamSubscription>[];
     Timer? minuteur;
-    var ferme = false;
+    var actif = false;
     var enCours = false;
     var redemander = false;
 
     Future<void> recharger() async {
-      if (ferme) return;
+      if (!actif) return;
       if (enCours) {
-        // Un rechargement est déjà en vol : on note qu'il en faudra un
-        // autre après, plutôt que d'en lancer deux en parallèle dont
-        // l'ordre d'arrivée déciderait de ce qui s'affiche.
+        // Un rechargement est déjà en vol : on note qu'il en faudra un autre
+        // après, plutôt que d'en lancer deux en parallèle dont l'ordre
+        // d'arrivée déciderait de ce qui s'affiche.
         redemander = true;
         return;
       }
       enCours = true;
       try {
         final valeur = await charger();
-        if (!ferme) controleur.add(valeur);
+        if (actif) diffusion.add(valeur);
       } catch (e, pile) {
-        if (!ferme) controleur.addError(e, pile);
+        if (actif) diffusion.addError(e, pile);
       } finally {
         enCours = false;
-        if (redemander && !ferme) {
+        if (redemander && actif) {
           redemander = false;
           unawaited(recharger());
         }
@@ -153,24 +165,47 @@ class RealtimeService {
       minuteur = Timer(groupage, recharger);
     }
 
-    controleur = StreamController<T>(
-      onListen: () {
-        // Première charge immédiate : un écran ne doit pas rester vide en
-        // attendant qu'une écriture survienne quelque part.
-        recharger();
-        for (final d in declencheurs) {
-          abonnements.add(d.listen((_) => programmer()));
-        }
-      },
-      onCancel: () async {
-        ferme = true;
-        minuteur?.cancel();
-        for (final a in abonnements) {
-          await a.cancel();
-        }
-      },
-    );
+    /// Branche les déclencheurs. Doit pouvoir être rejouée : un écran fermé
+    /// puis réouvert repasse par ici.
+    void demarrer() {
+      actif = true;
+      for (final d in declencheurs) {
+        abonnements.add(d.listen((_) => programmer()));
+      }
+    }
 
-    return controleur.stream;
+    Future<void> arreter() async {
+      actif = false;
+      minuteur?.cancel();
+      minuteur = null;
+      for (final a in abonnements) {
+        await a.cancel();
+      }
+      abonnements.clear();
+    }
+
+    return Stream<T>.multi((abonne) {
+      // Le premier abonné branche les déclencheurs ; le dernier à partir les
+      // débranche. Sans ça, un écran fermé continuerait d'interroger le
+      // serveur à chaque changement.
+      final premier = !diffusion.hasListener;
+
+      final sub = diffusion.stream.listen(
+        abonne.add,
+        onError: abonne.addError,
+      );
+      abonne.onCancel = () async {
+        await sub.cancel();
+        if (!diffusion.hasListener) await arreter();
+      };
+
+      if (premier) demarrer();
+
+      // Chaque nouvel abonné demande les données : un contrôleur diffusé ne
+      // rejoue pas ce qui est déjà passé, et un écran qui arrive en second
+      // resterait vide jusqu'à la prochaine écriture. Les abonnés déjà en
+      // place reçoivent la même valeur une fois de plus — sans conséquence.
+      recharger();
+    });
   }
 }
