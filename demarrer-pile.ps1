@@ -147,7 +147,23 @@ try {
         -ArgumentList 'server.js' `
         -RedirectStandardOutput "$Journaux\backend.log" `
         -RedirectStandardError "$Journaux\backend-erreurs.log"
-    Start-Sleep -Seconds 5
+
+    # On attend qu'il reponde, au lieu de dormir un temps fixe. Un delai
+    # arbitraire annoncait « Backend : arrete » alors qu'il demarrait — le
+    # journal disait « Ordimed API sur :4000 » a la ligne suivante. Ca envoyait
+    # chercher une panne qui n'existait pas.
+    $pret = $false
+    foreach ($i in 1..20) {
+        Start-Sleep -Milliseconds 700
+        try {
+            Invoke-RestMethod -Uri 'http://localhost:4000/health' -TimeoutSec 2 | Out-Null
+            $pret = $true
+            break
+        } catch { }
+    }
+    if (-not $pret) {
+        Write-Host "  Le backend ne repond pas. Voir $Journaux\backend-erreurs.log" -ForegroundColor Red
+    }
 }
 
 AfficherEtat
