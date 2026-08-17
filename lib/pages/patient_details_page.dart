@@ -16,6 +16,7 @@ import 'consultation_page.dart';
 import '../core/coerce.dart';
 import '../core/versements.dart';
 import '../ui/info_display.dart';
+import '../ui/liberer.dart';
 import '../core/clinical.dart';
 import '../core/format.dart' as fmt;
 import '../core/validate.dart' as v;
@@ -1457,17 +1458,21 @@ class PatientDetailsPage extends StatelessWidget {
       },
     );
 
-    nameCtrl.dispose();
-    nameArCtrl.dispose();
-    subtitleCtrl.dispose();
-    wilayaCtrl.dispose();
-    addressCtrl.dispose();
-    phoneCtrl.dispose();
-    noteCtrl.dispose();
-    ordNumberCtrl.dispose();
-    for (final line in lines) {
-      line.dispose();
-    }
+    libererApresFermeture([
+      nameCtrl,
+      nameArCtrl,
+      subtitleCtrl,
+      wilayaCtrl,
+      addressCtrl,
+      phoneCtrl,
+      noteCtrl,
+      ordNumberCtrl,
+    ]);
+    apresFermeture(() {
+      for (final line in lines) {
+        line.dispose();
+      }
+    });
   }
 
   Future<void> _openBilanDialog(
@@ -1878,15 +1883,19 @@ class PatientDetailsPage extends StatelessWidget {
       },
     );
 
-    nameCtrl.dispose();
-    nameArCtrl.dispose();
-    subtitleCtrl.dispose();
-    wilayaCtrl.dispose();
-    addressCtrl.dispose();
-    phoneCtrl.dispose();
-    for (final line in lines) {
-      line.dispose();
-    }
+    libererApresFermeture([
+      nameCtrl,
+      nameArCtrl,
+      subtitleCtrl,
+      wilayaCtrl,
+      addressCtrl,
+      phoneCtrl,
+    ]);
+    apresFermeture(() {
+      for (final line in lines) {
+        line.dispose();
+      }
+    });
   }
 
   Future<void> _openReglementDialog(
@@ -1943,13 +1952,13 @@ class PatientDetailsPage extends StatelessWidget {
     );
 
     if (res != true) {
-      prixCtrl.dispose();
+      libererApresFermeture([prixCtrl]);
       return;
     }
 
     final raw = prixCtrl.text.replaceAll(',', '.').trim();
     final montant = double.tryParse(raw);
-    prixCtrl.dispose();
+    libererApresFermeture([prixCtrl]);
     if (montant == null) {
       if (context.mounted) {
         ScaffoldMessenger.of(
@@ -2021,13 +2030,13 @@ class PatientDetailsPage extends StatelessWidget {
     );
 
     if (res != true) {
-      seancesCtrl.dispose();
+      libererApresFermeture([seancesCtrl]);
       return;
     }
 
     final raw = seancesCtrl.text.trim();
     final total = int.tryParse(raw);
-    seancesCtrl.dispose();
+    libererApresFermeture([seancesCtrl]);
     if (total == null) {
       if (context.mounted) {
         ScaffoldMessenger.of(
@@ -3203,9 +3212,7 @@ class PatientDetailsPage extends StatelessWidget {
     );
 
     if (res != true) {
-      typeCtrl.dispose();
-      contentCtrl.dispose();
-      sectionCtrls.values.forEach((c) => c.dispose());
+      libererApresFermeture([typeCtrl, contentCtrl, ...sectionCtrls.values]);
       return;
     }
 
@@ -3225,9 +3232,7 @@ class PatientDetailsPage extends StatelessWidget {
       updates['contenu'] = contentCtrl.text.trim();
     }
 
-    typeCtrl.dispose();
-    contentCtrl.dispose();
-    sectionCtrls.values.forEach((c) => c.dispose());
+    libererApresFermeture([typeCtrl, contentCtrl, ...sectionCtrls.values]);
 
     try {
       await _mettreAJourDocument(doc, updates);
@@ -3363,7 +3368,7 @@ class PatientDetailsPage extends StatelessWidget {
     );
 
     if (res != true) {
-      controllers.values.forEach((c) => c.dispose());
+      libererApresFermeture(controllers.values);
       return;
     }
 
@@ -3373,7 +3378,7 @@ class PatientDetailsPage extends StatelessWidget {
       sections[key] = controllers[f]?.text.trim() ?? '';
     }
 
-    controllers.values.forEach((c) => c.dispose());
+    libererApresFermeture(controllers.values);
 
     final data = <String, dynamic>{
       'type': 'Formulaire medecin',
