@@ -257,6 +257,45 @@ class _ConsultationPageState extends State<ConsultationPage> {
     }
   }
 
+  /// Ouvre la rédaction du document demandé, sans quitter la consultation.
+  ///
+  /// Le bouton poussait le dossier patient : le médecin sortait de son
+  /// parcours et devait retrouver le bouton lui-même dans une page de 4 500
+  /// lignes. Le dialogue s'ouvre maintenant par-dessus la consultation, et
+  /// l'étape « Conclusion » se met à jour au retour — elle lit les documents
+  /// en flux.
+  Future<void> _rediger(_Livrable livrable) async {
+    final Map<String, dynamic> dossier;
+    try {
+      dossier = await ApiService.instance.patient(_patientId);
+    } catch (_) {
+      return _message('Dossier introuvable');
+    }
+    if (!mounted) return;
+
+    // Ces dialogues sont heberges par le dossier patient — ils tiennent pres
+    // de mille lignes. `PatientDetailsPage` est sans etat : on en construit
+    // une instance sans l'afficher, pour appeler ses dialogues avec le
+    // contexte de cet ecran.
+    final dossierPage = PatientDetailsPage(
+      patientId: _patientId,
+      patientName: '$_patientNom $_patientPrenom'.trim(),
+      parentUid: widget.parentUid,
+      ownerProfileId: widget.profileId,
+      canAddForm: true,
+      canAddDoctorForm: true,
+    );
+
+    switch (livrable) {
+      case _Livrable.ordonnance:
+        await dossierPage.ouvrirOrdonnance(context, dossier);
+      case _Livrable.bilan:
+        await dossierPage.ouvrirBilan(context, dossier);
+      case _Livrable.formulaire:
+        await dossierPage.ouvrirFormulaireMedecin(context, dossier);
+    }
+  }
+
   Future<void> _ouvrirDossier() async {
     await Navigator.push(
       context,
@@ -578,7 +617,7 @@ class _ConsultationPageState extends State<ConsultationPage> {
                     (l) => _LigneLivrable(
                       livrable: l,
                       fait: faitsAujourdhui.contains(l.typeFirestore),
-                      onRediger: _ouvrirDossier,
+                      onRediger: () => _rediger(l),
                     ),
                   ),
                 ],

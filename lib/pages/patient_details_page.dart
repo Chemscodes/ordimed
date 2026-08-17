@@ -964,6 +964,34 @@ class PatientDetailsPage extends StatelessWidget {
     );
   }
 
+  /// Ouvre la rédaction d'une ordonnance depuis un autre écran.
+  ///
+  /// La consultation guidée poussait le dossier patient pour cela : le médecin
+  /// sortait de son parcours et devait retrouver le bouton lui-même dans une
+  /// page de 4 500 lignes. Il l'appelle maintenant directement.
+  ///
+  /// Ces dialogues restent hébergés ici parce qu'ils tiennent près de mille
+  /// lignes — en-tête du cabinet, listes de référence, mise en page du PDF.
+  /// Les extraire est un chantier ; les exposer suffit à réparer le parcours.
+  /// `PatientDetailsPage` est sans état : on peut en construire une instance
+  /// sans l'afficher, et appeler ces méthodes avec le contexte de l'appelant.
+  Future<void> ouvrirOrdonnance(
+    BuildContext context,
+    Map<String, dynamic> patientData,
+  ) => _openOrdonnanceDialog(context, patientData);
+
+  /// Ouvre la demande de bilan depuis un autre écran.
+  Future<void> ouvrirBilan(
+    BuildContext context,
+    Map<String, dynamic> patientData,
+  ) => _openBilanDialog(context, patientData);
+
+  /// Ouvre le formulaire médecin depuis un autre écran.
+  Future<void> ouvrirFormulaireMedecin(
+    BuildContext context,
+    Map<String, dynamic> patientData,
+  ) => _addDoctorForm(context, patientData: patientData);
+
   Future<void> _openOrdonnanceDialog(
     BuildContext context,
     Map<String, dynamic> patientData,
