@@ -114,8 +114,10 @@ Write-Host '  Construction...'
 Push-Location $Chantier
 try {
     flutter pub get 2>$null | Out-Null
+    # -CaseSensitive : sans lui, « Debug_builtins.obj » d'un avertissement
+    # d'editeur de liens matche « Built » et pollue la sortie.
     flutter build windows --debug 2>&1 |
-        Select-String -Pattern 'Built|error:' |
+        Select-String -Pattern 'Built build|error:' -CaseSensitive |
         ForEach-Object { Write-Host "    $_" }
 } finally { Pop-Location }
 
