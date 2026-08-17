@@ -146,14 +146,29 @@ class _AddPatientFormState extends State<AddPatientForm> {
   //  Navigation entre étapes
   // ---------------------------------------------------------------
 
+  /// Ce que l'identité a d'invalide, ou `null` si elle est bonne.
+  ///
+  /// Vérifie les **valeurs**, pas l'état du formulaire. `_identiteKey` ne
+  /// vaut quelque chose que tant que l'étape 1 est affichée : le `switch`
+  /// sur `_step` ne monte qu'une étape à la fois, et à l'étape 3 le `Form`
+  /// n'est plus dans l'arbre. `currentState?.validate() ?? false` y rendait
+  /// donc `false` — un dossier parfaitement rempli était refusé, et
+  /// l'assistant renvoyé au début sans rien à corriger.
+  String? _identiteInvalide() =>
+      v.nom(nom.text, champ: 'Le nom') ??
+      v.age(age.text) ??
+      v.phone(tel.text) ??
+      v.email(email.text);
+
   /// Ce qui manque à l'étape courante, ou `null` si elle est complète.
   /// Sert à la fois à bloquer et à expliquer pourquoi.
   String? _bloquant(int step) {
     switch (step) {
       case 0:
-        return (_identiteKey.currentState?.validate() ?? false)
-            ? null
-            : 'Corrigez les champs signalés';
+        // Sur l'étape affichée, on demande aussi au formulaire de marquer
+        // les champs en rouge — le message seul ne dit pas lequel.
+        _identiteKey.currentState?.validate();
+        return _identiteInvalide();
       case 1:
         if (motifs.isEmpty) return 'Choisissez au moins un motif';
         if (selectedDoctorId == null) return 'Choisissez un médecin';
@@ -198,9 +213,13 @@ class _AddPatientFormState extends State<AddPatientForm> {
 
     // Filet de sécurité : l'assistant empêche déjà d'arriver ici incomplet,
     // mais on ne fait pas confiance à la seule navigation.
-    if (!(_identiteKey.currentState?.validate() ?? false)) {
+    // Le message dit désormais *ce qui* ne va pas. « Corrigez les champs
+    // signalés » était doublement trompeur ici : aucun champ n'était
+    // signalé, puisque le formulaire de l'étape 1 n'est plus affiché.
+    final probleme = _identiteInvalide();
+    if (probleme != null) {
       setState(() => _step = 0);
-      return _erreur('Corrigez les champs signalés');
+      return _erreur(probleme);
     }
     if (motifs.isEmpty || selectedDoctorId == null) {
       setState(() => _step = 1);
