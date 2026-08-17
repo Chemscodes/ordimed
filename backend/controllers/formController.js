@@ -41,6 +41,7 @@ exports.creer = async (req, res) => {
       auteurProfileId: auteur ? auteur._id : null,
       type: c.asText(req.body.type),
       contenu: c.asText(req.body.contenu),
+      prix: c.asNumberOrNull(req.body.prix),
       poids: c.asNumberOrNull(req.body.poids),
       taille: c.asNumberOrNull(req.body.taille),
       imc: c.asText(req.body.imc),

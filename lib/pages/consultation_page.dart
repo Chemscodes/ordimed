@@ -91,6 +91,19 @@ class _ConsultationPageState extends State<ConsultationPage> {
   final _imcCtrl = TextEditingController();
   final _observationsCtrl = TextEditingController();
 
+  /// Prix facturé pour cette séance.
+  ///
+  /// Prérempli avec le tarif du dossier, et modifiable : un contrôle ne coûte
+  /// pas le prix d'une première consultation. Le montant part à la clôture et
+  /// s'ajoute au total dû.
+  final _prixCtrl = TextEditingController();
+
+  /// Vrai dès que le tarif du dossier a été proposé une fois.
+  ///
+  /// Sans ce garde-fou, chaque rechargement du flux écraserait ce que le
+  /// médecin vient de taper.
+  bool _prixPrerempli = false;
+
   int _step = 0;
   bool _cloture = false;
   bool _examenEnregistre = false;
@@ -129,6 +142,7 @@ class _ConsultationPageState extends State<ConsultationPage> {
     _tailleCtrl.dispose();
     _imcCtrl.dispose();
     _observationsCtrl.dispose();
+    _prixCtrl.dispose();
     super.dispose();
   }
 
@@ -230,6 +244,7 @@ class _ConsultationPageState extends State<ConsultationPage> {
           assistantId: '',
           patientId: _patientId,
           seancesEffectuees: 1,
+          prixSeance: asDoubleOrNull(_prixCtrl.text),
         );
       } else {
         // Consultation lancee depuis le dossier : le patient n'est passe
@@ -643,6 +658,25 @@ class _ConsultationPageState extends State<ConsultationPage> {
           effectuees: seances.effectuees + 1,
         );
 
+        // Le tarif du dossier n'est propose qu'une fois : le flux se recharge
+        // a chaque ecriture, et reecrire le champ effacerait la saisie en
+        // cours.
+        final tarif = asDoubleOrNull(data['prixSeance']);
+        if (!_prixPrerempli && tarif != null) {
+          _prixPrerempli = true;
+          _prixCtrl.text = tarif.toStringAsFixed(
+            tarif.truncateToDouble() == tarif ? 0 : 2,
+          );
+        }
+
+        final facture = asDoubleOrNull(_prixCtrl.text) ?? 0;
+        // Ce que le patient devra apres cette seance : le total du plus ce
+        // qu'on facture aujourd'hui, moins ce qui est deja verse.
+        final apresCloture = Reglement(
+          prix: (reglement.prix ?? 0) + facture,
+          verse: reglement.verse,
+        );
+
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -674,17 +708,56 @@ class _ConsultationPageState extends State<ConsultationPage> {
                         : '${apres.libelle} après clôture',
                     fait: true,
                   ),
-                  if (!reglement.sansPrix)
+                  const SizedBox(height: 6),
+                  Divider(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.outline.withValues(alpha: 0.6),
+                    height: 24,
+                  ),
+                  // Le prix se saisit ici, au moment ou l'acte est termine :
+                  // c'est la que le medecin sait ce qu'il a fait.
+                  AppField.montant(
+                    controller: _prixCtrl,
+                    label: 'Prix de cette séance',
+                    helper: tarif == null
+                        ? 'Aucun tarif enregistré sur le dossier'
+                        : 'Tarif du dossier : ${fmt.money(tarif)}',
+                    onChanged: (_) => setState(() {}),
+                  ),
+                  const SizedBox(height: 4),
+                  MontantsSuggeres(
+                    suggestions: {
+                      if (tarif != null) 'Tarif': tarif,
+                      'Gratuit': 0,
+                    },
+                    onChoisi: (m) => setState(() {
+                      _prixCtrl.text = m == 0
+                          ? ''
+                          : m.toStringAsFixed(
+                              m.truncateToDouble() == m ? 0 : 2,
+                            );
+                    }),
+                  ),
+                  const SizedBox(height: 14),
+                  _LigneBilan(
+                    icone: Icons.receipt_long_outlined,
+                    label: 'Facturé aujourd’hui',
+                    valeur: facture > 0 ? fmt.money(facture) : 'Rien à facturer',
+                    fait: true,
+                  ),
+                  if (!apresCloture.sansPrix && apresCloture.prix! > 0)
                     _LigneBilan(
                       icone: Icons.account_balance_wallet_outlined,
-                      label: 'Règlement',
-                      valeur: reglement.solde
+                      label: 'Total à payer',
+                      valeur: apresCloture.solde
                           ? 'Dossier soldé'
-                          : '${fmt.money(reglement.reste)} restant dus',
-                      fait: reglement.solde,
-                      // Un reste à payer n'empêche pas de clôturer : c'est
-                      // l'assistant qui encaisse, pas le médecin.
-                      alerte: !reglement.solde,
+                          : '${fmt.money(apresCloture.reste)} restant dus '
+                                'sur ${fmt.money(apresCloture.prix)}',
+                      fait: apresCloture.solde,
+                      // Un reste a payer n'empeche pas de cloturer : c'est
+                      // l'assistant qui encaisse, pas le medecin.
+                      alerte: !apresCloture.solde,
                     ),
                 ],
               ),

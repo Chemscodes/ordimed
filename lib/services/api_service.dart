@@ -334,11 +334,18 @@ class ApiService {
       _objet(await _api.post('/waiting/$waitingId/demarrer'));
 
   /// Décompte la séance, sort le patient, marque le rendez-vous honoré.
+  /// Cloture une consultation.
+  ///
+  /// `prixSeance` est facture au patient : le serveur l'ajoute au total du,
+  /// dans la meme transaction que le decompte de seance. Une entree deja
+  /// close ne refacture rien — le double clic est sans effet.
   Future<void> cloturerConsultation(
     String waitingId, {
     bool decompterSeance = true,
+    double? prixSeance,
   }) => _api.post('/waiting/$waitingId/cloturer', {
     'decompterSeance': decompterSeance,
+    if (prixSeance != null && prixSeance > 0) 'prixSeance': prixSeance,
   });
 
   // -----------------------------------------------------------------

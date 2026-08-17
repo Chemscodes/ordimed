@@ -207,7 +207,24 @@ const PatientSchema = new Schema(
     seancesEffectuees: { type: Number, default: 0 },
 
     // Argent.
+    /**
+     * Total du par le patient.
+     *
+     * Deux usages coexistent dans un cabinet, et ce champ les porte tous
+     * deux : un forfait convenu d'avance (« 10 seances pour 12 000 »), ou
+     * l'accumulation des seances facturees une a une. Dans le second cas, la
+     * cloture d'une consultation ajoute ici le prix de la seance.
+     */
     prix: { type: Number, default: null },
+    /**
+     * Tarif d'une seance, propose a la facturation.
+     *
+     * Ce n'est pas un montant du : c'est le prix par defaut que la cloture
+     * ajoute a `prix`. Le medecin comme l'assistant peuvent le fixer, et il
+     * reste modifiable seance par seance — un controle ne coute pas le prix
+     * d'une premiere consultation.
+     */
+    prixSeance: { type: Number, default: null },
     totalVersements: { type: Number, default: 0 },
     /**
      * Cache des 50 versements les plus récents. La collection `Versement`
@@ -260,6 +277,14 @@ const FormSchema = new Schema(
       ],
     },
     contenu: { type: String, default: '' },
+
+    /**
+     * Montant facture pour cette visite.
+     *
+     * Ecrit a la cloture, et jamais recalcule : changer le tarif du cabinet
+     * ne doit pas reecrire ce qu'on a facture il y a six mois.
+     */
+    prix: { type: Number, default: null },
 
     // Consultation : mesures typées, écrites en plus du texte pour que
     // l'historique les relise sans reparser.

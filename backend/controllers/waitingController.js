@@ -130,6 +130,7 @@ exports.demarrer = async (req, res) => {
 exports.cloturer = async (req, res) => {
   const session = await mongoose.startSession();
   let entree;
+  let dejaClose = false;
 
   try {
     await session.withTransaction(async () => {
@@ -137,6 +138,20 @@ exports.cloturer = async (req, res) => {
         session
       );
       if (!entree) return;
+
+      /**
+       * Une entree deja close ne se referme pas.
+       *
+       * Le decompte de seance etait applique sans cette garde : un double clic
+       * comptait deux seances. C'est reste sans consequence visible tant que
+       * la cloture ne touchait pas a l'argent — elle facture maintenant, et un
+       * double clic ferait payer deux fois.
+       *
+       * `dejaClose` est renvoye a l'appelant : il doit pouvoir distinguer
+       * « rien a faire » d'un echec.
+       */
+      dejaClose = entree.closedAt != null;
+      if (dejaClose) return;
 
       await Waiting.updateOne(
         { _id: entree._id },
@@ -150,10 +165,38 @@ exports.cloturer = async (req, res) => {
         { session }
       );
 
+      /**
+       * Le decompte de la seance et sa facturation partent ensemble : une
+       * seance comptee sans etre facturee, ou l'inverse, fausse le dossier.
+       *
+       * L'ecriture passe par un pipeline et non par `$inc`, parce que `$inc`
+       * **refuse un champ null** : « Cannot apply $inc to a value of
+       * non-numeric type ». Or `prix` vaut null par defaut — c'est ce qui
+       * distingue « aucun prix fixe » de « zero du », et `Reglement` s'appuie
+       * dessus. `$ifNull` traite les deux cas.
+       *
+       * L'increment reste relatif a la valeur en base : deux postes qui
+       * cloturent en meme temps ne s'ecrasent pas.
+       */
+      const maj = {};
       if (req.body.decompterSeance !== false) {
+        maj.seancesEffectuees = {
+          $add: [{ $ifNull: ['$seancesEffectuees', 0] }, 1],
+        };
+      }
+
+      // Le montant vient de la requete, pas du tarif enregistre : le medecin
+      // peut l'avoir ajuste pour cette visite — un controle ne coute pas le
+      // prix d'une premiere consultation.
+      const facture = c.asNumberOrNull(req.body.prixSeance);
+      if (facture !== null && facture > 0) {
+        maj.prix = { $add: [{ $ifNull: ['$prix', 0] }, facture] };
+      }
+
+      if (Object.keys(maj).length) {
         await Patient.updateOne(
           { _id: entree.patientId, parentUid: req.parentUid },
-          { $inc: { seancesEffectuees: 1 } },
+          [{ $set: maj }],
           { session }
         );
       }
@@ -179,6 +222,12 @@ exports.cloturer = async (req, res) => {
   }
 
   if (!entree) return res.status(404).json({ error: 'Entrée introuvable' });
+
+  if (dejaClose) {
+    // 200 et non une erreur : la cloture a bien eu lieu, simplement pas
+    // maintenant. Rien a corriger cote app, et surtout rien a refacturer.
+    return res.json({ ok: true, dejaClose: true });
+  }
 
   diffuser(req.parentUid, 'salle_attente', 'maj', { id: String(entree._id) });
   diffuser(req.parentUid, 'patients', 'maj', {

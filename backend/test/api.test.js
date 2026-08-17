@@ -587,3 +587,108 @@ describe('Journal d’erreurs', () => {
     assert.equal(r.status, 204);
   });
 });
+
+describe('Facturation de la seance', () => {
+  let pat;
+  let waitingId;
+
+  it('le tarif de seance se fixe sur le dossier', async () => {
+    // Le medecin comme l'assistant peuvent le poser : c'est un champ du
+    // dossier, pas une prerogative de role.
+    const p = await auth(request(app).post('/api/patients')).send({
+      nom: 'Tarif',
+      doctorId: ctx.medecin.id,
+      ajouterEnSalle: false,
+    });
+    pat = p.body;
+
+    const r = await auth(request(app).put(`/api/patients/${pat.id}`)).send({
+      prixSeance: '2 000',
+    });
+    assert.equal(r.body.prixSeance, 2000);
+  });
+
+  it('la cloture ajoute le prix de la seance au total du', async () => {
+    const mise = await auth(request(app).post('/api/waiting')).send({
+      patientId: pat.id,
+    });
+    waitingId = mise.body.id;
+
+    const avant = await auth(request(app).get(`/api/patients/${pat.id}`));
+    assert.equal(avant.body.prix, null);
+
+    await auth(request(app).post(`/api/waiting/${waitingId}/cloturer`)).send({
+      prixSeance: 2000,
+    });
+
+    const apres = await auth(request(app).get(`/api/patients/${pat.id}`));
+    assert.equal(apres.body.prix, 2000);
+    assert.equal(apres.body.seancesEffectuees, 1);
+  });
+
+  it('une seconde cloture ne facture pas deux fois', async () => {
+    // Le double clic. Sans garde, le patient payait deux fois la meme
+    // seance — et voyait sa seance comptee deux fois.
+    const r = await auth(
+      request(app).post(`/api/waiting/${waitingId}/cloturer`)
+    ).send({ prixSeance: 2000 });
+
+    assert.equal(r.status, 200);
+    assert.equal(r.body.dejaClose, true);
+
+    const apres = await auth(request(app).get(`/api/patients/${pat.id}`));
+    assert.equal(apres.body.prix, 2000);
+    assert.equal(apres.body.seancesEffectuees, 1);
+  });
+
+  it('les seances s accumulent visite apres visite', async () => {
+    const deux = await auth(request(app).post('/api/waiting')).send({
+      patientId: pat.id,
+    });
+    await auth(request(app).post(`/api/waiting/${deux.body.id}/cloturer`)).send({
+      // Un controle ne coute pas le prix d une premiere consultation : le
+      // montant vient de la requete, pas du tarif enregistre.
+      prixSeance: 1200,
+    });
+
+    const apres = await auth(request(app).get(`/api/patients/${pat.id}`));
+    assert.equal(apres.body.prix, 3200);
+    assert.equal(apres.body.seancesEffectuees, 2);
+  });
+
+  it('une cloture sans prix ne touche pas au total', async () => {
+    // Une seance offerte, ou un forfait deja regle : rien a facturer.
+    const trois = await auth(request(app).post('/api/waiting')).send({
+      patientId: pat.id,
+    });
+    await auth(
+      request(app).post(`/api/waiting/${trois.body.id}/cloturer`)
+    ).send({});
+
+    const apres = await auth(request(app).get(`/api/patients/${pat.id}`));
+    assert.equal(apres.body.prix, 3200);
+    assert.equal(apres.body.seancesEffectuees, 3);
+  });
+
+  it('un montant negatif est ignore', async () => {
+    const quatre = await auth(request(app).post('/api/waiting')).send({
+      patientId: pat.id,
+    });
+    await auth(
+      request(app).post(`/api/waiting/${quatre.body.id}/cloturer`)
+    ).send({ prixSeance: -500 });
+
+    const apres = await auth(request(app).get(`/api/patients/${pat.id}`));
+    assert.equal(apres.body.prix, 3200);
+  });
+
+  it('le reste a payer suit les versements', async () => {
+    // C'est le calcul que le patient entend a la caisse.
+    await auth(request(app).post('/api/versements')).send({
+      patientId: pat.id,
+      montant: 1200,
+    });
+    const p = await auth(request(app).get(`/api/patients/${pat.id}`));
+    assert.equal(p.body.prix - p.body.totalVersements, 2000);
+  });
+});

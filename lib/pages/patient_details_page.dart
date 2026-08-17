@@ -1939,6 +1939,16 @@ class PatientDetailsPage extends StatelessWidget {
           );
     final prixCtrl = TextEditingController(text: initialPrix);
 
+    // Le tarif d'une seance, distinct du total du. Le medecin le retrouve
+    // prerempli a la cloture d'une consultation ; l'assistant le fixe ici,
+    // au moment ou il annonce le prix au patient.
+    final tarif = _parseDouble(patientData['prixSeance']);
+    final tarifCtrl = TextEditingController(
+      text: tarif == null
+          ? ''
+          : tarif.toStringAsFixed(tarif.truncateToDouble() == tarif ? 0 : 2),
+    );
+
     final res = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
@@ -1963,6 +1973,19 @@ class PatientDetailsPage extends StatelessWidget {
               decoration: const InputDecoration(
                 labelText: 'Total a payer',
                 prefixText: 'DA ',
+                helperText: 'Ce que le patient doit en tout',
+              ),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: tarifCtrl,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              decoration: const InputDecoration(
+                labelText: 'Tarif d’une seance',
+                prefixText: 'DA ',
+                helperText: 'Propose a la cloture, et ajoute au total',
               ),
             ),
           ],
@@ -1981,13 +2004,26 @@ class PatientDetailsPage extends StatelessWidget {
     );
 
     if (res != true) {
-      libererApresFermeture([prixCtrl]);
+      libererApresFermeture([prixCtrl, tarifCtrl]);
       return;
     }
 
     final raw = prixCtrl.text.replaceAll(',', '.').trim();
     final montant = double.tryParse(raw);
-    libererApresFermeture([prixCtrl]);
+    // Un tarif vide efface le tarif : c'est un choix explicite, pas un oubli.
+    final brutTarif = tarifCtrl.text.replaceAll(',', '.').trim();
+    final nouveauTarif = brutTarif.isEmpty ? null : double.tryParse(brutTarif);
+    final tarifInvalide = brutTarif.isNotEmpty && nouveauTarif == null;
+    libererApresFermeture([prixCtrl, tarifCtrl]);
+
+    if (tarifInvalide) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Tarif de seance invalide')),
+        );
+      }
+      return;
+    }
     if (montant == null) {
       if (context.mounted) {
         ScaffoldMessenger.of(
@@ -1998,11 +2034,14 @@ class PatientDetailsPage extends StatelessWidget {
     }
 
     try {
-      await _updatePatientCopies(patientData, {'prix': montant});
+      await _updatePatientCopies(patientData, {
+        'prix': montant,
+        'prixSeance': nouveauTarif,
+      });
       if (context.mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(const SnackBar(content: Text('Total mis a jour')));
+        ).showSnackBar(const SnackBar(content: Text('Reglement mis a jour')));
       }
     } catch (_) {
       if (context.mounted) {

@@ -87,12 +87,14 @@ class WaitingService {
     required String assistantId,
     String patientId = '',
     int? seancesEffectuees,
+    double? prixSeance,
   }) => _api.cloturerConsultation(
     waitingId,
     // Le decompte se fait cote serveur. L'ancien code calculait le nouveau
     // total dans l'app puis l'ecrivait, ce qui perdait un increment quand
     // deux postes cloturaient en meme temps.
     decompterSeance: seancesEffectuees != null,
+    prixSeance: prixSeance,
   );
 
   /// La file d'un profil, mise a jour toute seule.

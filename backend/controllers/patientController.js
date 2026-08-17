@@ -67,6 +67,11 @@ function corpsVersDocument(body) {
       body.seancesEffectuees !== undefined ? c.asInt(body.seancesEffectuees) : undefined,
 
     prix: body.prix !== undefined ? c.asNumberOrNull(body.prix) : undefined,
+    // Le tarif de seance : le medecin comme l'assistant le fixent.
+    prixSeance:
+      body.prixSeance !== undefined
+        ? c.asNumberOrNull(body.prixSeance)
+        : undefined,
   });
 }
 
