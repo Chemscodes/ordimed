@@ -2,6 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../core/coerce.dart';
+
 class MigrationPage extends StatefulWidget {
   const MigrationPage({super.key});
 
@@ -16,6 +18,17 @@ class _MigrationPageState extends State<MigrationPage> {
 
   void _log(String msg) {
     setState(() => _logs.add(msg));
+  }
+
+  /// Copie un document s'il n'existe pas encore à destination. Relancer la
+  /// migration ne duplique ni n'écrase rien.
+  Future<bool> _copier(
+    DocumentReference<Map<String, dynamic>> cible,
+    Map<String, dynamic> donnees,
+  ) async {
+    if ((await cible.get()).exists) return false;
+    await cible.set(donnees);
+    return true;
   }
 
   Future<void> _migrer() async {
@@ -61,7 +74,15 @@ class _MigrationPageState extends State<MigrationPage> {
       var nbPatients = 0;
       var nbForms = 0;
       var nbRdv = 0;
+      var nbVersements = 0;
+      var nbAchats = 0;
+      var nbFile = 0;
+      var nbStats = 0;
       final patientsDejaMigres = <String>{};
+      // Les entrées de salle d'attente et les achats étaient recopiés chez
+      // chaque profil concerné (jusqu'à trois fois) sous le même identifiant.
+      final fileDejaVue = <String>{};
+      final achatsDejaVus = <String>{};
 
       // 2. Créer le document cabinet s'il n'existe pas
       final cabinetExiste = (await nouveauDoc.get()).exists;
@@ -152,6 +173,63 @@ class _MigrationPageState extends State<MigrationPage> {
           if (forms.docs.isNotEmpty) {
             _log('    Patient $patientId : ${forms.docs.length} forms');
           }
+
+          // 5b. Versements : la sous-collection (historique complet) et
+          // l'ancien tableau du dossier (seul endroit où vivent les plus
+          // anciens). Dédoublonnés sur montant + date, sinon le total double.
+          final versementsSnap = await ancienDoc
+              .collection('comptes')
+              .doc(profileId)
+              .collection('patients')
+              .doc(patientId)
+              .collection('versements')
+              .get();
+          final sources = <MapEntry<String, Map<String, dynamic>>>[
+            for (final v in versementsSnap.docs) MapEntry(v.id, v.data()),
+          ];
+          final tableau = patientData['versements'];
+          if (tableau is List) {
+            for (final v in tableau) {
+              if (v is Map) {
+                sources.add(MapEntry('', Map<String, dynamic>.from(v)));
+              }
+            }
+          }
+          final vus = <String>{};
+          for (final source in sources) {
+            final v = source.value;
+            final montant = asDouble(v['montant']);
+            if (montant == 0) continue;
+            final date = asDateOrNull(v['createdAt']);
+            final cle =
+                '$montant@${date?.millisecondsSinceEpoch ?? 'sans-date'}';
+            if (!vus.add(cle)) continue;
+
+            // Identifiant stable pour les entrées du tableau : relancer la
+            // migration retombe sur le même document.
+            final id = source.key.isNotEmpty
+                ? source.key
+                : 'legacy_${patientId}_${cle.replaceAll(RegExp(r'[^0-9A-Za-z]'), '_')}';
+            final copie = await _copier(
+              nouveauDoc.collection('versements').doc(id),
+              {
+                ...v,
+                'parentUid': uid,
+                'patientId': patientId,
+                'doctorId':
+                    v['doctorId'] ?? patientData['doctorId'] ?? profileId,
+                'montant': montant,
+                'dayKey':
+                    asTextOrNull(v['dayKey']) ??
+                    (date != null ? dayKeyOf(date) : ''),
+                'createdAt': v['createdAt'] ?? FieldValue.serverTimestamp(),
+                'migratedFrom': source.key.isNotEmpty
+                    ? 'users/$uid/comptes/$profileId/patients/$patientId/versements/${source.key}'
+                    : 'users/$uid/comptes/$profileId/patients/$patientId#versements',
+              },
+            );
+            if (copie) nbVersements++;
+          }
         }
 
         // 6. Migrer les rendez-vous de ce profil
@@ -170,8 +248,7 @@ class _MigrationPageState extends State<MigrationPage> {
             await nouveauDoc.collection('rendezvous').doc(rdvId).set({
               ...rdv.data(),
               'doctorId': profileId,
-              'migratedFrom':
-                  'users/$uid/comptes/$profileId/rendezvous/$rdvId',
+              'migratedFrom': 'users/$uid/comptes/$profileId/rendezvous/$rdvId',
             });
             nbRdv++;
           }
@@ -179,7 +256,74 @@ class _MigrationPageState extends State<MigrationPage> {
         if (rdvs.docs.isNotEmpty) {
           _log('  Rendez-vous : ${rdvs.docs.length}');
         }
+
+        // 7. Achats de ce profil
+        final achats = await ancienDoc
+            .collection('comptes')
+            .doc(profileId)
+            .collection('purchases')
+            .get();
+        for (final achat in achats.docs) {
+          if (!achatsDejaVus.add(achat.id)) continue;
+          final d = achat.data();
+          final date = asDateOrNull(d['createdAt']);
+          final copie =
+              await _copier(nouveauDoc.collection('purchases').doc(achat.id), {
+                ...d,
+                'parentUid': uid,
+                'profileId': d['profileId'] ?? profileId,
+                'montant': asDouble(d['montant']),
+                'dayKey':
+                    asTextOrNull(d['dayKey']) ??
+                    (date != null ? dayKeyOf(date) : ''),
+                'migratedFrom':
+                    'users/$uid/comptes/$profileId/purchases/${achat.id}',
+              });
+          if (copie) nbAchats++;
+        }
+        if (achats.docs.isNotEmpty) {
+          _log('  Achats : ${achats.docs.length}');
+        }
+
+        // 8. Salle d'attente de ce profil
+        final file = await ancienDoc
+            .collection('comptes')
+            .doc(profileId)
+            .collection('salle_attente')
+            .get();
+        for (final entree in file.docs) {
+          if (!fileDejaVue.add(entree.id)) continue;
+          final copie = await _copier(
+            nouveauDoc.collection('salle_attente').doc(entree.id),
+            {
+              ...entree.data(),
+              'parentUid': uid,
+              'migratedFrom':
+                  'users/$uid/comptes/$profileId/salle_attente/${entree.id}',
+            },
+          );
+          if (copie) nbFile++;
+        }
+        if (file.docs.isNotEmpty) {
+          _log('  Salle d’attente : ${file.docs.length}');
+        }
       }
+
+      // 9. Statistiques journalières (au niveau du cabinet, pas du profil).
+      // L'identifiant est le jour ; la nouvelle version filtre sur le champ
+      // dayKey, qu'on garantit présent.
+      final stats = await ancienDoc.collection('daily_stats').get();
+      for (final stat in stats.docs) {
+        final copie =
+            await _copier(nouveauDoc.collection('daily_stats').doc(stat.id), {
+              ...stat.data(),
+              'dayKey': asTextOrNull(stat.data()['dayKey']) ?? stat.id,
+              'migratedFrom': 'users/$uid/daily_stats/${stat.id}',
+            });
+        if (copie) nbStats++;
+      }
+      _log('');
+      _log('Statistiques journalières : ${stats.docs.length}');
 
       _log('');
       _log('=== Migration terminée ===');
@@ -187,6 +331,12 @@ class _MigrationPageState extends State<MigrationPage> {
       _log('Patients  : $nbPatients');
       _log('Documents : $nbForms');
       _log('RDV       : $nbRdv');
+      _log('Versements: $nbVersements');
+      _log('Achats    : $nbAchats');
+      _log('File      : $nbFile');
+      _log('Stats/jour: $nbStats');
+      _log('');
+      _log('Les anciennes données (users/$uid) sont intactes.');
       _log('');
       _log('Redémarre l\'app pour voir tes données.');
     } catch (e, stack) {
