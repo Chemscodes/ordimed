@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
-import 'reglage_serveur.dart';
+import '../services/backend_config.dart';
+import 'choix_base.dart';
 import 'signup_page.dart';
 import 'profile_selector_page.dart';
 import '../ui/fluent_card.dart';
@@ -63,126 +64,138 @@ class _LoginPageState extends State<LoginPage> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              scheme.primary.withOpacity(0.08),
-              scheme.secondary.withOpacity(0.08),
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-        ),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 520),
-            child: FluentCard(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        height: 46,
-                        width: 46,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(14),
-                          gradient: LinearGradient(
-                            colors: [scheme.primary, scheme.secondary],
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 400),
+          child: FluentCard(
+            padding: const EdgeInsets.all(28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      height: 40,
+                      width: 40,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(9),
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            const Color(0xFF2FE0BE),
+                            const Color(0xFF1ABFA2),
+                          ],
+                        ),
+                      ),
+                      child: const Icon(Icons.medical_services_rounded, color: Colors.white, size: 20),
+                    ),
+                    const SizedBox(width: 12),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Ordimed',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: scheme.onSurface,
                           ),
                         ),
-                        child: const Icon(Icons.medical_services, color: Colors.white),
-                      ),
-                      const SizedBox(width: 12),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
-                          Text(
-                            'Ordimed',
-                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                        Text(
+                          'Espace sécurisé',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: scheme.onSurface.withValues(alpha: 0.50),
                           ),
-                          Text('Espace sécurisé'),
-                        ],
-                      ),
-                    ],
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                Text(
+                  'Connexion',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: scheme.onSurface,
                   ),
-                  const SizedBox(height: 20),
-                  const Text(
-                    'Connexion',
-                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 14),
-                  FluentTextField(
-                    controller: email,
-                    label: 'Email professionnel',
-                    icon: Icons.email_outlined,
-                    keyboardType: TextInputType.emailAddress,
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: password,
-                    obscureText: _obscure,
-                    decoration: InputDecoration(
-                      labelText: 'Mot de passe',
-                      prefixIcon: const Icon(Icons.lock_outline),
-                      suffixIcon: IconButton(
-                        icon: Icon(_obscure ? Icons.visibility_off : Icons.visibility),
-                        onPressed: () => setState(() => _obscure = !_obscure),
-                      ),
+                ),
+                const SizedBox(height: 16),
+                FluentTextField(
+                  controller: email,
+                  label: 'Email professionnel',
+                  icon: Icons.email_outlined,
+                  keyboardType: TextInputType.emailAddress,
+                ),
+                const SizedBox(height: 10),
+                FluentTextField(
+                  controller: password,
+                  label: 'Mot de passe',
+                  icon: Icons.lock_outline,
+                  obscure: _obscure,
+                ),
+                const SizedBox(height: 4),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: () => setState(() => _obscure = !_obscure),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      minimumSize: Size.zero,
+                    ),
+                    child: Text(
+                      _obscure ? 'Afficher' : 'Masquer',
+                      style: const TextStyle(fontSize: 11),
                     ),
                   ),
-                  const SizedBox(height: 18),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: _isSubmitting ? null : login,
-                      child: _isSubmitting
-                          ? Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: const [
-                                SizedBox(
-                                  height: 16,
-                                  width: 16,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
-                                ),
-                                SizedBox(width: 8),
-                                Text('Connexion...'),
-                              ],
-                            )
-                          : const Text('Se connecter'),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: FluentButton(
+                    label: _isSubmitting ? 'Connexion…' : 'Se connecter',
+                    isLoading: _isSubmitting,
+                    onPressed: _isSubmitting ? null : login,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Center(
+                  child: TextButton(
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const SignupPage()),
+                    ),
+                    child: const Text('Créer un compte'),
+                  ),
+                ),
+                // C'est ici qu'on decouvre que la base ne repond pas : le
+                // reglage doit etre a portee, pas enfoui dans un menu
+                // accessible seulement une fois connecte.
+                Center(
+                  child: TextButton.icon(
+                    onPressed: () async {
+                      final change = await ChoixBase.ouvrir(context);
+                      if (change && mounted) setState(() {});
+                    },
+                    icon: Icon(
+                      BackendConfig.surFirebase
+                          ? Icons.cloud_outlined
+                          : Icons.dns_outlined,
+                      size: 14,
+                    ),
+                    label: Text(
+                      BackendConfig.surFirebase
+                          ? 'Base : Firebase'
+                          : 'Serveur : ${ApiClient.instance.baseUrl}',
+                      style: const TextStyle(fontSize: 11),
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  Center(
-                    child: TextButton(
-                      onPressed: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const SignupPage()),
-                      ),
-                      child: const Text('Créer un compte'),
-                    ),
-                  ),
-                  // C'est ici qu'on decouvre que le serveur ne repond pas :
-                  // le reglage doit etre a portee, pas enfoui dans un menu
-                  // accessible seulement une fois connecte.
-                  Center(
-                    child: TextButton.icon(
-                      onPressed: () async {
-                        final change = await ReglageServeur.ouvrir(context);
-                        if (change && mounted) setState(() {});
-                      },
-                      icon: const Icon(Icons.dns_outlined, size: 16),
-                      label: Text(
-                        'Serveur : ${ApiClient.instance.baseUrl}',
-                        style: const TextStyle(fontSize: 12),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),

@@ -4,18 +4,17 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import 'add_patient_form.dart';
+import 'accueil_patient_page.dart';
 import 'patient_details_page.dart';
 import 'profile_selector_page.dart';
 import 'stats_page.dart';
 import '../services/firestore_service.dart';
 import '../core/creneaux.dart';
+import '../core/doctor_form_prototype.dart';
 import '../core/parcours.dart';
-import '../core/versements.dart';
 import '../services/api_client.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
-import '../services/recu_service.dart';
 import '../services/rendezvous_repository.dart';
 import 'choix_creneau_page.dart';
 import '../services/soft_delete.dart';
@@ -24,12 +23,10 @@ import '../services/waiting_service.dart';
 import '../ui/app_shell.dart';
 import '../ui/fluent_button.dart';
 import '../ui/fluent_card.dart';
-import '../widgets/daily_versements_card.dart';
+import '../widgets/kpi_row.dart';
+import '../widgets/patient_status_indicator.dart';
+import '../widgets/salle_attente_board.dart';
 import '../core/coerce.dart';
-import '../ui/info_display.dart';
-import '../core/clinical.dart';
-import '../ui/app_field.dart';
-import '../widgets/computed_fields.dart';
 import '../widgets/patient_filters.dart';
 
 /// Rend le contenu d'un dialogue defilable et borne sa hauteur.
@@ -44,10 +41,7 @@ Widget _scrollableDialogContent(BuildContext context, Widget child) {
   );
 }
 
-
 double _toDouble(dynamic v) => asDouble(v);
-
-int? _toInt(dynamic v) => asIntOrNull(v);
 
 class DashboardAssistant extends StatefulWidget {
   final String parentUid;
@@ -99,26 +93,29 @@ class _DashboardAssistantState extends State<DashboardAssistant> {
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Nouvel achat'),
-        content: _scrollableDialogContent(context, Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: produitCtrl,
-              decoration: const InputDecoration(labelText: 'Produit'),
-            ),
-            TextField(
-              controller: fournisseurCtrl,
-              decoration: const InputDecoration(labelText: 'Fournisseur'),
-            ),
-            TextField(
-              controller: montantCtrl,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
+        content: _scrollableDialogContent(
+          context,
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: produitCtrl,
+                decoration: const InputDecoration(labelText: 'Produit'),
               ),
-              decoration: const InputDecoration(labelText: 'Prix d\'achat'),
-            ),
-          ],
-        )),
+              TextField(
+                controller: fournisseurCtrl,
+                decoration: const InputDecoration(labelText: 'Fournisseur'),
+              ),
+              TextField(
+                controller: montantCtrl,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: const InputDecoration(labelText: 'Prix d\'achat'),
+              ),
+            ],
+          ),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -153,7 +150,6 @@ class _DashboardAssistantState extends State<DashboardAssistant> {
       'profileId': widget.profileId,
       'dayKey': _todayKey(),
       'parentUid': widget.parentUid,
-      'profileId': widget.profileId,
     });
     await StatsService().addAchat(
       parentUid: widget.parentUid,
@@ -348,41 +344,44 @@ class _DashboardAssistantState extends State<DashboardAssistant> {
       builder: (_) => StatefulBuilder(
         builder: (ctx, setState) => AlertDialog(
           title: const Text('Motifs de consultation'),
-          content: _scrollableDialogContent(context, Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: motifs
-                    .map(
-                      (m) => Chip(
-                        label: Text(m),
-                        onDeleted: motifs.length > 1
-                            ? () => setState(() => motifs.remove(m))
-                            : null,
-                      ),
-                    )
-                    .toList(),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: ctrl,
-                decoration: const InputDecoration(
-                  labelText: 'Ajouter un motif',
+          content: _scrollableDialogContent(
+            context,
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: motifs
+                      .map(
+                        (m) => Chip(
+                          label: Text(m),
+                          onDeleted: motifs.length > 1
+                              ? () => setState(() => motifs.remove(m))
+                              : null,
+                        ),
+                      )
+                      .toList(),
                 ),
-                onSubmitted: (v) {
-                  final val = v.trim();
-                  if (val.isEmpty) return;
-                  setState(() {
-                    if (!motifs.contains(val)) motifs.add(val);
-                    ctrl.clear();
-                  });
-                },
-              ),
-            ],
-          )),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: ctrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Ajouter un motif',
+                  ),
+                  onSubmitted: (v) {
+                    final val = v.trim();
+                    if (val.isEmpty) return;
+                    setState(() {
+                      if (!motifs.contains(val)) motifs.add(val);
+                      ctrl.clear();
+                    });
+                  },
+                ),
+              ],
+            ),
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx, false),
@@ -449,7 +448,7 @@ class _DashboardAssistantState extends State<DashboardAssistant> {
                 .where((e) => e.isNotEmpty)
                 .toList();
           }
-          _ensureVitals(list);
+          list = ensureVitals(list);
           return MapEntry(k.toString(), list);
         });
       }
@@ -484,7 +483,7 @@ class _DashboardAssistantState extends State<DashboardAssistant> {
                     .where((e) => e.isNotEmpty)
                     .toList();
               }
-              _ensureVitals(list);
+              list = ensureVitals(list);
               return MapEntry(k.toString(), list);
             });
           }
@@ -535,34 +534,37 @@ class _DashboardAssistantState extends State<DashboardAssistant> {
       builder: (_) => StatefulBuilder(
         builder: (ctx, setState) => AlertDialog(
           title: const Text('Prototype par motif'),
-          content: _scrollableDialogContent(context, Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              DropdownButton<String>(
-                value: selected,
-                items: motifsAvail
-                    .map((m) => DropdownMenuItem(value: m, child: Text(m)))
-                    .toList(),
-                onChanged: (v) {
-                  if (v == null) return;
-                  setState(() {
-                    selected = v;
-                    ctrl.text = (_motifPrototypes[selected] ?? []).join(', ');
-                  });
-                },
-              ),
-              const SizedBox(height: 8),
-              const Text('Champs du formulaire (separes par des virgules)'),
-              TextField(
-                controller: ctrl,
-                maxLines: 2,
-                decoration: const InputDecoration(
-                  hintText: 'ex: Champ A, Champ B, Champ C',
+          content: _scrollableDialogContent(
+            context,
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                DropdownButton<String>(
+                  value: selected,
+                  items: motifsAvail
+                      .map((m) => DropdownMenuItem(value: m, child: Text(m)))
+                      .toList(),
+                  onChanged: (v) {
+                    if (v == null) return;
+                    setState(() {
+                      selected = v;
+                      ctrl.text = (_motifPrototypes[selected] ?? []).join(', ');
+                    });
+                  },
                 ),
-              ),
-            ],
-          )),
+                const SizedBox(height: 8),
+                const Text('Champs du formulaire (separes par des virgules)'),
+                TextField(
+                  controller: ctrl,
+                  maxLines: 2,
+                  decoration: const InputDecoration(
+                    hintText: 'ex: Champ A, Champ B, Champ C',
+                  ),
+                ),
+              ],
+            ),
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx, false),
@@ -577,16 +579,14 @@ class _DashboardAssistantState extends State<DashboardAssistant> {
       ),
     );
     if (res != true) return;
-    final fields = ctrl.text
+    var fields = ctrl.text
         .split(',')
         .map((e) => e.trim())
         .where((e) => e.isNotEmpty)
         .toList();
-    _ensureVitals(fields);
+    fields = ensureVitals(fields);
     _motifPrototypes[selected] = fields;
-    await ApiService.instance.majCabinet({
-      'motifPrototypes': _motifPrototypes,
-    });
+    await ApiService.instance.majCabinet({'motifPrototypes': _motifPrototypes});
     if (mounted) {
       setState(() {});
       ScaffoldMessenger.of(
@@ -595,28 +595,13 @@ class _DashboardAssistantState extends State<DashboardAssistant> {
     }
   }
 
-  void _ensureVitals(List<String> list) {
-    bool has(String name) =>
-        list.any((e) => e.toLowerCase() == name.toLowerCase());
-    void addIfMissing(String name) {
-      if (!has(name)) list.insert(0, name);
-    }
-
-    addIfMissing('IMC');
-    addIfMissing('Taille');
-    addIfMissing('Poids');
-  }
-
   @override
   Widget build(BuildContext context) {
     Widget tabContent;
     if (navIndex == 0) {
       tabContent = Column(
         children: [
-          DailyVersementsCard(
-            parentUid: widget.parentUid,
-            profileId: widget.profileId,
-          ),
+          KpiRow(parentUid: widget.parentUid, profileId: widget.profileId),
           const SizedBox(height: 12),
           _NetDailyCardAssistant(parentUid: widget.parentUid),
           const SizedBox(height: 12),
@@ -666,7 +651,7 @@ class _DashboardAssistantState extends State<DashboardAssistant> {
       ],
       topActions: [
         FluentButton(
-          label: 'Nouveau patient',
+          label: 'Accueillir un patient',
           icon: Icons.person_add_alt_1,
           onPressed: () {
             final motifs = _motifsForPatientsTab.isNotEmpty
@@ -676,9 +661,10 @@ class _DashboardAssistantState extends State<DashboardAssistant> {
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (_) => AddPatientForm(
+                builder: (_) => AccueilPatientPage(
                   parentUid: widget.parentUid,
-                  assistantProfileId: widget.profileId,
+                  profileId: widget.profileId,
+                  waitingService: waitingService,
                   assistantName:
                       _assistantName ?? (widget.profileData['name'] ?? ''),
                   motifsPredefinis: motifs,
@@ -730,7 +716,7 @@ class _DashboardAssistantState extends State<DashboardAssistant> {
       actions: [
         IconButton(
           tooltip: 'Retour accueil',
-          icon: const Icon(Icons.home_outlined, color: Colors.white),
+          icon: const Icon(Icons.home_outlined),
           onPressed: () {
             Navigator.pushAndRemoveUntil(
               context,
@@ -743,7 +729,7 @@ class _DashboardAssistantState extends State<DashboardAssistant> {
         ),
         IconButton(
           tooltip: 'Deconnexion',
-          icon: const Icon(Icons.logout, color: Colors.white),
+          icon: const Icon(Icons.logout),
           onPressed: () async {
             await AuthService().signOut();
             if (context.mounted) {
@@ -797,45 +783,28 @@ class _PurchasesCard extends StatelessWidget {
     return '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
   }
 
-  bool _createdToday(dynamic value) {
-    // asDateOrNull accepte l'ISO du backend comme les Timestamp encore
-    // presents dans les donnees importees.
-    final t = asDateOrNull(value);
-    if (t != null) {
-      return t.year == DateTime.now().year &&
-          t.month == DateTime.now().month &&
-          t.day == DateTime.now().day;
-    }
-    if (value is DateTime) {
-      return value.year == DateTime.now().year &&
-          value.month == DateTime.now().month &&
-          value.day == DateTime.now().day;
-    }
-    return false;
-  }
-
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final textPrimary = scheme.onSurface;
     final textMuted = scheme.onSurface.withOpacity(0.7);
-    final stream = ApiService.instance.achatsFlux();
+    // Le total du jour vient de l'agregat `daily_stats`, pas d'un listener
+    // sur tout l'historique des achats — meme pattern que
+    // `_NetDailyCardAssistant`, qui lit deja ce document pour les memes
+    // champs (`achatsTotal`/`achatsCount`).
+    final statsStream = StatsService().dailyStatsDoc(
+      parentUid: parentUid,
+      dayKey: _dayKey(),
+    );
 
-    return StreamBuilder<List<Map<String, dynamic>>>(
-      stream: stream,
+    return StreamBuilder<Map<String, dynamic>?>(
+      stream: statsStream,
       builder: (context, snapshot) {
-        double total = 0;
-        int count = 0;
-        if (snapshot.hasData) {
-          for (final data in snapshot.data!) {
-            final day = (data['dayKey'] ?? '').toString();
-            final created = data['createdAt'];
-            final isToday = day == _dayKey() || _createdToday(created);
-            if (!isToday) continue;
-            total += _toDouble(data['montant']);
-            count += 1;
-          }
-        }
+        final data = snapshot.data;
+        final total = data == null ? 0.0 : _toDouble(data['achatsTotal']);
+        final count = data == null
+            ? 0
+            : (data['achatsCount'] as num?)?.toInt() ?? 0;
         final card = FluentCard(
           padding: const EdgeInsets.all(14),
           child: Row(
@@ -937,21 +906,24 @@ class _PurchasesHistoryState extends State<_PurchasesHistory> {
     final textPrimary = scheme.onSurface;
     final textMuted = scheme.onSurface.withOpacity(0.7);
     final textFaint = scheme.onSurface.withOpacity(0.5);
-    // Le collectionGroup traversait tous les cabinets ; le filtrage par
-    // profil et par jour se fait maintenant sur une liste deja restreinte
-    // au cabinet du jeton.
-    final purchasesStream = ApiService.instance.achatsFlux().map(
-      (liste) => liste.where((a) {
-        if (widget.profileId != null && a['profileId'] != widget.profileId) {
-          return false;
-        }
-        if (widget.dayKey != null && a['dayKey'] != widget.dayKey) return false;
-        return true;
-      }).toList(),
-    );
+    // Une lecture ponctuelle du jour demandé — pas un listener sur tout
+    // l'historique des achats du cabinet : ce dialogue s'ouvre à la
+    // demande et n'a pas besoin d'être tenu à jour en direct pendant qu'il
+    // est fermé.
+    final purchasesFuture = ApiService.instance
+        .achats(dayKey: widget.dayKey)
+        .then(
+          (liste) => liste
+              .where(
+                (a) =>
+                    widget.profileId == null ||
+                    a['profileId'] == widget.profileId,
+              )
+              .toList(),
+        );
 
-    return StreamBuilder<List<Map<String, dynamic>>>(
-      stream: purchasesStream,
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: purchasesFuture,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
           return const Center(child: Text('Erreur de chargement des achats'));
@@ -1183,12 +1155,15 @@ class _PatientsTab extends StatefulWidget {
 class _PatientsTabState extends State<_PatientsTab> {
   final TextEditingController _searchCtrl = TextEditingController();
   PatientQuery _pq = const PatientQuery();
-  final WaitingService _waitingService = WaitingService();
   final ScrollController _patientsScrollCtrl = ScrollController();
   final Set<String> _deletingPatientIds = <String>{};
-  final Set<String> _addingWaitingPatientIds = <String>{};
   static const int _pageSize = 60;
   int _limit = _pageSize;
+
+  /// Une seule lecture par session de recherche — sans ce cache, chaque
+  /// caractère tapé rouvrirait une lecture complète des patients scopés.
+  /// Voir la même logique dans `AccueilPatientPage`/`PatientsPage`.
+  Future<List<Map<String, dynamic>>>? _rechercheComplete;
 
   @override
   void dispose() {
@@ -1197,60 +1172,29 @@ class _PatientsTabState extends State<_PatientsTab> {
     super.dispose();
   }
 
-  Future<void> _ajouterEnSalleAttente(
-    BuildContext context,
-    Map<String, dynamic> patient,
-    String patientId,
-  ) async {
-    if (_addingWaitingPatientIds.contains(patientId)) return;
-    final doctorId = (patient['doctorId'] ?? '').toString();
-    if (doctorId.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Aucun Medecin assigne a ce patient')),
-      );
-      return;
-    }
-    setState(() => _addingWaitingPatientIds.add(patientId));
-    try {
-      final seancesTotal = int.tryParse(
-        (patient['nombreSeances'] ?? '').toString(),
-      );
-      final seancesDone =
-          int.tryParse((patient['seancesEffectuees'] ?? '0').toString()) ?? 0;
-      final added = await _waitingService.addToWaiting(
-        parentUid: widget.parentUid,
-        assistantId: widget.profileId,
-        assistantName: widget.assistantName,
-        doctorId: doctorId,
-        doctorName: (patient['assignedMedecinName'] ?? '').toString(),
-        patientId: patientId,
-        patientNom: patient['nom'] ?? '',
-        patientPrenom: patient['prenom'] ?? '',
-        nombreSeances: seancesTotal,
-        seancesEffectuees: seancesDone,
-      );
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            added
-                ? 'Patient ajoute en salle d\'attente'
-                : 'Patient deja en salle d\'attente',
-          ),
-        ),
-      );
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Erreur lors de l\'ajout en salle d\'attente'),
-        ),
-      );
-    } finally {
-      if (mounted) {
-        setState(() => _addingWaitingPatientIds.remove(patientId));
+  /// Sous ce seuil, deux lettres correspondent à trop de patients pour être
+  /// utiles — mais un filtre rapide ou un médecin choisi reste immédiat,
+  /// lui, il ne dépend pas du texte.
+  static const int _seuilRecherche = 3;
+
+  bool _pretPourRecherche(PatientQuery q) =>
+      q.texte.length >= _seuilRecherche ||
+      q.filtre != PatientFiltre.tous ||
+      q.doctorId != null;
+
+  /// Recharge la lecture ponctuelle quand une recherche ou un filtre
+  /// devient utilisable, et l'efface quand on revient à "Tous" sans texte.
+  void _appliquerQuery(PatientQuery q) {
+    setState(() {
+      _pq = q;
+      if (!_pretPourRecherche(q)) {
+        _rechercheComplete = null;
+      } else {
+        _rechercheComplete ??= ApiService.instance.patients(
+          profileId: widget.profileId,
+        );
       }
-    }
+    });
   }
 
   Future<void> _deletePatient(
@@ -1301,8 +1245,7 @@ class _PatientsTabState extends State<_PatientsTab> {
             content: const Text('Patient retire — dossier conserve'),
             action: SnackBarAction(
               label: 'Annuler',
-              onPressed: () =>
-                  ApiService.instance.restaurerPatient(patientId),
+              onPressed: () => ApiService.instance.restaurerPatient(patientId),
             ),
             duration: const Duration(seconds: 8),
           ),
@@ -1337,13 +1280,6 @@ class _PatientsTabState extends State<_PatientsTab> {
               Colors.white.withOpacity(0.92),
               const Color(0xFFF1F5F9).withOpacity(0.9),
             ],
-    );
-
-    final stream = widget.service.patientsStream(
-      parentUid: widget.parentUid,
-      profileId: widget.profileId,
-      orderByCreated: true,
-      limit: _limit,
     );
 
     return Column(
@@ -1408,12 +1344,9 @@ class _PatientsTabState extends State<_PatientsTab> {
                       isCollapsed: true,
                       contentPadding: const EdgeInsets.symmetric(vertical: 12),
                     ),
-                    onChanged: (v) =>
-                        setState(
-                          () => _pq = _pq.copyWith(
-                            texte: v.trim().toLowerCase(),
-                          ),
-                        ),
+                    onChanged: (v) => _appliquerQuery(
+                      _pq.copyWith(texte: v.trim().toLowerCase()),
+                    ),
                   ),
                 ),
               ],
@@ -1427,289 +1360,311 @@ class _PatientsTabState extends State<_PatientsTab> {
           child: PatientFilterBar(
             query: _pq,
             onChanged: (q) {
-              setState(() {
-                _pq = q;
-                if (q.texte != _searchCtrl.text.trim().toLowerCase()) {
-                  _searchCtrl.text = q.texte;
-                }
-              });
+              if (q.texte != _searchCtrl.text.trim().toLowerCase()) {
+                _searchCtrl.text = q.texte;
+              }
+              _appliquerQuery(q);
             },
           ),
         ),
         Expanded(
-          child: StreamBuilder<List<Map<String, dynamic>>>(
-            stream: stream,
-            builder: (context, snapshot) {
-              if (snapshot.hasError) {
-                return const Center(
-                  child: Text('Erreur de chargement des patients'),
-                );
-              }
-
-              if (!snapshot.hasData) {
-                return const Center(child: CircularProgressIndicator());
-              }
-
-              final patients = snapshot.data!;
-              final canLoadMore = patients.length >= _limit;
-
-              if (patients.isEmpty) {
-                return const Center(
-                  child: Text(
-                    'Aucun patient pour le moment',
-                    style: TextStyle(fontSize: 16),
-                  ),
-                );
-              }
-
-              // Un seul point de decision pour la recherche, les filtres
-              // rapides, le medecin et la suppression douce.
-              final filtered = _pq.filtrer(patients);
-
-              if (filtered.isEmpty) {
-                if (canLoadMore && _pq.actif) {
-                  return Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Text('Aucun patient trouve dans cette page'),
-                        const SizedBox(height: 8),
-                        OutlinedButton(
-                          onPressed: () => setState(() => _limit += _pageSize),
-                          child: const Text('Charger plus'),
-                        ),
-                      ],
+          child: !_pretPourRecherche(_pq)
+              ? const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Text(
+                      'Tapez un nom ou choisissez un filtre pour retrouver un patient.',
+                      style: TextStyle(fontSize: 15),
+                      textAlign: TextAlign.center,
                     ),
-                  );
-                }
-                return const Center(child: Text('Aucun patient trouve'));
-              }
+                  ),
+                )
+              : FutureBuilder<List<Map<String, dynamic>>>(
+                  future: _rechercheComplete,
+                  builder: (context, snapshot) {
+                    if (snapshot.hasError) {
+                      return const Center(
+                        child: Text('Erreur de chargement des patients'),
+                      );
+                    }
 
-              return Scrollbar(
-                controller: _patientsScrollCtrl,
-                thumbVisibility: true,
-                child: ListView.builder(
-                  controller: _patientsScrollCtrl,
-                  itemCount: filtered.length + (canLoadMore ? 1 : 0),
-                  itemBuilder: (context, index) {
-                    if (canLoadMore && index >= filtered.length) {
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        child: Center(
-                          child: OutlinedButton(
-                            onPressed: () =>
-                                setState(() => _limit += _pageSize),
-                            child: const Text('Charger plus'),
-                          ),
+                    if (!snapshot.hasData) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+
+                    final tous = snapshot.data!;
+                    final patients = tous.length > _limit
+                        ? tous.sublist(0, _limit)
+                        : tous;
+                    final canLoadMore = tous.length > _limit;
+
+                    if (patients.isEmpty) {
+                      return const Center(
+                        child: Text(
+                          'Aucun patient pour le moment',
+                          style: TextStyle(fontSize: 16),
                         ),
                       );
                     }
-                    final patient = filtered[index];
-                    final data = patient;
 
-                    final nom = (data['nom'] ?? 'Sans nom').toString();
-                    final motif = (data['motif'] ?? 'Motif non renseigne')
-                        .toString();
-                    final medecin =
-                        (data['assignedMedecinName'] ??
-                                data['doctorName'] ??
-                                data['doctorId'] ??
-                                'Non assigne')
-                            .toString();
+                    // Un seul point de decision pour la recherche, les filtres
+                    // rapides, le medecin et la suppression douce.
+                    final filtered = _pq.filtrer(patients);
 
-                    return TweenAnimationBuilder<double>(
-                      duration: Duration(milliseconds: 220 + (index * 30)),
-                      tween: Tween(begin: 18, end: 0),
-                      builder: (context, offset, child) {
-                        return Opacity(
-                          opacity: 1 - (offset / 18).clamp(0, 1),
-                          child: Transform.translate(
-                            offset: Offset(0, offset),
-                            child: child,
-                          ),
-                        );
-                      },
-                      child: Container(
-                        margin: const EdgeInsets.only(
-                          bottom: 12,
-                          left: 12,
-                          right: 12,
-                        ),
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [
-                              Colors.white.withOpacity(0.16),
-                              Colors.white.withOpacity(0.06),
+                    if (filtered.isEmpty) {
+                      if (canLoadMore && _pq.actif) {
+                        return Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Text(
+                                'Aucun patient trouve dans cette page',
+                              ),
+                              const SizedBox(height: 8),
+                              OutlinedButton(
+                                onPressed: () =>
+                                    setState(() => _limit += _pageSize),
+                                child: const Text('Charger plus'),
+                              ),
                             ],
                           ),
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(
-                            color: Colors.white.withOpacity(0.22),
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.08),
-                              blurRadius: 18,
-                              offset: const Offset(0, 12),
+                        );
+                      }
+                      return const Center(child: Text('Aucun patient trouve'));
+                    }
+
+                    return Scrollbar(
+                      controller: _patientsScrollCtrl,
+                      thumbVisibility: true,
+                      child: ListView.builder(
+                        controller: _patientsScrollCtrl,
+                        itemCount: filtered.length + (canLoadMore ? 1 : 0),
+                        itemBuilder: (context, index) {
+                          if (canLoadMore && index >= filtered.length) {
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              child: Center(
+                                child: OutlinedButton(
+                                  onPressed: () =>
+                                      setState(() => _limit += _pageSize),
+                                  child: const Text('Charger plus'),
+                                ),
+                              ),
+                            );
+                          }
+                          final patient = filtered[index];
+                          final data = patient;
+
+                          final nom = (data['nom'] ?? 'Sans nom').toString();
+                          final motif = (data['motif'] ?? 'Motif non renseigne')
+                              .toString();
+                          final medecin =
+                              (data['assignedMedecinName'] ??
+                                      data['doctorName'] ??
+                                      data['doctorId'] ??
+                                      'Non assigne')
+                                  .toString();
+
+                          return TweenAnimationBuilder<double>(
+                            duration: Duration(
+                              milliseconds: 220 + (index * 30),
                             ),
-                          ],
-                        ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Container(
-                              width: 4,
-                              height: 46,
-                              margin: const EdgeInsets.only(top: 6),
+                            tween: Tween(begin: 18, end: 0),
+                            builder: (context, offset, child) {
+                              return Opacity(
+                                opacity: 1 - (offset / 18).clamp(0, 1),
+                                child: Transform.translate(
+                                  offset: Offset(0, offset),
+                                  child: child,
+                                ),
+                              );
+                            },
+                            child: Container(
+                              margin: const EdgeInsets.only(
+                                bottom: 12,
+                                left: 12,
+                                right: 12,
+                              ),
+                              padding: const EdgeInsets.all(14),
                               decoration: BoxDecoration(
                                 gradient: LinearGradient(
-                                  begin: Alignment.topCenter,
-                                  end: Alignment.bottomCenter,
-                                  colors: [secondary, primary],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: [
+                                    Colors.white.withOpacity(0.16),
+                                    Colors.white.withOpacity(0.06),
+                                  ],
                                 ),
-                                borderRadius: BorderRadius.circular(999),
+                                borderRadius: BorderRadius.circular(18),
+                                border: Border.all(
+                                  color: Colors.white.withOpacity(0.22),
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.08),
+                                    blurRadius: 18,
+                                    offset: const Offset(0, 12),
+                                  ),
+                                ],
                               ),
-                            ),
-                            const SizedBox(width: 10),
-                            CircleAvatar(
-                              radius: 24,
-                              backgroundColor: secondary.withOpacity(0.15),
-                              child: const Icon(
-                                Icons.person_outline,
-                                color: primary,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
+                              child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: Text(
-                                          nom,
+                                  Container(
+                                    width: 4,
+                                    height: 46,
+                                    margin: const EdgeInsets.only(top: 6),
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        begin: Alignment.topCenter,
+                                        end: Alignment.bottomCenter,
+                                        colors: [secondary, primary],
+                                      ),
+                                      borderRadius: BorderRadius.circular(999),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  CircleAvatar(
+                                    radius: 24,
+                                    backgroundColor: secondary.withOpacity(
+                                      0.15,
+                                    ),
+                                    child: const Icon(
+                                      Icons.person_outline,
+                                      color: primary,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: Text(
+                                                nom,
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.w800,
+                                                  fontSize: 17,
+                                                  color: textPrimary,
+                                                ),
+                                              ),
+                                            ),
+                                            if (motif.isNotEmpty)
+                                              Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 10,
+                                                      vertical: 6,
+                                                    ),
+                                                decoration: BoxDecoration(
+                                                  color: secondary.withOpacity(
+                                                    0.18,
+                                                  ),
+                                                  borderRadius:
+                                                      BorderRadius.circular(12),
+                                                ),
+                                                child: Text(
+                                                  motif,
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    color: textPrimary,
+                                                    fontWeight: FontWeight.w700,
+                                                  ),
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 6),
+                                        PatientStatusIndicator(
+                                          patientData: data,
+                                        ),
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          'Medecin : $medecin',
                                           style: TextStyle(
-                                            fontWeight: FontWeight.w800,
-                                            fontSize: 17,
-                                            color: textPrimary,
+                                            color: textMuted,
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w600,
                                           ),
                                         ),
+                                      ],
+                                    ),
+                                  ),
+                                  Column(
+                                    children: [
+                                      IconButton(
+                                        icon: const Icon(
+                                          Icons.article_outlined,
+                                        ),
+                                        color: primary,
+                                        tooltip: 'Dossier patient',
+                                        onPressed: () {
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (_) =>
+                                                  PatientDetailsPage(
+                                                    patientId: patient['id']
+                                                        .toString(),
+                                                    patientName: nom,
+                                                    parentUid: widget.parentUid,
+                                                    ownerProfileId:
+                                                        widget.profileId,
+                                                    canAddForm: true,
+                                                  ),
+                                            ),
+                                          );
+                                        },
                                       ),
-                                      if (motif.isNotEmpty)
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 10,
-                                            vertical: 6,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: secondary.withOpacity(0.18),
-                                            borderRadius: BorderRadius.circular(
-                                              12,
+                                      IconButton(
+                                        icon: const Icon(Icons.event_available),
+                                        color: secondary,
+                                        onPressed: () => widget.onPlanifier(
+                                          data,
+                                          patient['id'].toString(),
+                                        ),
+                                        tooltip: 'Planifier un rendez-vous',
+                                      ),
+                                      if (_deletingPatientIds.contains(
+                                        patient['id'].toString(),
+                                      ))
+                                        const Padding(
+                                          padding: EdgeInsets.all(10),
+                                          child: SizedBox(
+                                            width: 18,
+                                            height: 18,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
                                             ),
                                           ),
-                                          child: Text(
-                                            motif,
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              color: textPrimary,
-                                              fontWeight: FontWeight.w700,
-                                            ),
+                                        )
+                                      else
+                                        IconButton(
+                                          icon: const Icon(
+                                            Icons.delete_outline,
                                           ),
+                                          color: scheme.error,
+                                          onPressed: () => _deletePatient(
+                                            context,
+                                            patient['id'].toString(),
+                                            data,
+                                          ),
+                                          tooltip: 'Supprimer patient',
                                         ),
                                     ],
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    'Medecin : $medecin',
-                                    style: TextStyle(
-                                      color: textMuted,
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600,
-                                    ),
                                   ),
                                 ],
                               ),
                             ),
-                            Column(
-                              children: [
-                                IconButton(
-                                  icon: const Icon(Icons.article_outlined),
-                                  color: primary,
-                                  tooltip: 'Dossier patient',
-                                  onPressed: () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) => PatientDetailsPage(
-                                          patientId: patient['id'].toString(),
-                                          patientName: nom,
-                                          parentUid: widget.parentUid,
-                                          ownerProfileId: widget.profileId,
-                                          canAddForm: true,
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                ),
-                                IconButton(
-                                  icon: const Icon(Icons.meeting_room_outlined),
-                                  color: Colors.orange.shade700,
-                                  onPressed:
-                                      _addingWaitingPatientIds.contains(
-                                        patient['id'].toString(),
-                                      )
-                                      ? null
-                                      : () => _ajouterEnSalleAttente(
-                                          context,
-                                          data,
-                                          patient['id'].toString(),
-                                        ),
-                                  tooltip: 'Mettre en salle d\'attente',
-                                ),
-                                IconButton(
-                                  icon: const Icon(Icons.event_available),
-                                  color: secondary,
-                                  onPressed: () =>
-                                      widget.onPlanifier(data, patient['id'].toString()),
-                                  tooltip: 'Planifier un rendez-vous',
-                                ),
-                                if (_deletingPatientIds.contains(patient['id'].toString()))
-                                  const Padding(
-                                    padding: EdgeInsets.all(10),
-                                    child: SizedBox(
-                                      width: 18,
-                                      height: 18,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                      ),
-                                    ),
-                                  )
-                                else
-                                  IconButton(
-                                    icon: const Icon(Icons.delete_outline),
-                                    color: scheme.error,
-                                    onPressed: () => _deletePatient(
-                                      context,
-                                      patient['id'].toString(),
-                                      data,
-                                    ),
-                                    tooltip: 'Supprimer patient',
-                                  ),
-                              ],
-                            ),
-                          ],
-                        ),
+                          );
+                        },
                       ),
                     );
                   },
                 ),
-              );
-            },
-          ),
         ),
       ],
     );
@@ -1916,26 +1871,29 @@ class _AssistantRdvTabState extends State<_AssistantRdvTab> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Message WhatsApp'),
-        content: _scrollableDialogContent(context, Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            TextField(
-              controller: controller,
-              maxLines: 6,
-              decoration: const InputDecoration(
-                labelText: 'Message',
-                hintText:
-                    'Utilise {patient}, {date}, {heure}, {medecin}, {motif}',
+        content: _scrollableDialogContent(
+          context,
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: controller,
+                maxLines: 6,
+                decoration: const InputDecoration(
+                  labelText: 'Message',
+                  hintText:
+                      'Utilise {patient}, {date}, {heure}, {medecin}, {motif}',
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Variables: {patient} {prenom} {nom} {date} {heure} {medecin} {motif}',
-              style: TextStyle(fontSize: 12),
-            ),
-          ],
-        )),
+              const SizedBox(height: 8),
+              const Text(
+                'Variables: {patient} {prenom} {nom} {date} {heure} {medecin} {motif}',
+                style: TextStyle(fontSize: 12),
+              ),
+            ],
+          ),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -2109,9 +2067,9 @@ class _AssistantRdvTabState extends State<_AssistantRdvTab> {
         if (duree != null) 'duree': duree,
       });
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Rendez-vous mis a jour')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Rendez-vous mis a jour')));
       }
     } on ApiException catch (e) {
       if (!context.mounted) return;
@@ -2154,51 +2112,55 @@ class _AssistantRdvTabState extends State<_AssistantRdvTab> {
               '${selectedTime.hour.toString().padLeft(2, '0')}:${selectedTime.minute.toString().padLeft(2, '0')}';
           return AlertDialog(
             title: const Text('Modifier rendez-vous'),
-            content: _scrollableDialogContent(context, Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                TextField(
-                  controller: motifCtrl,
-                  decoration: const InputDecoration(labelText: 'Motif'),
-                ),
-                const SizedBox(height: 12),
-                // Deplacer un rendez-vous passait par les memes selecteurs
-                // libres que la prise : on pouvait le poser sur un creneau
-                // deja occupe et contourner toute la detection de conflit.
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.event_outlined),
-                  label: Text('$dateLabel a $timeLabel'),
-                  onPressed: () async {
-                    final creneau = await Navigator.push<Creneau>(
-                      ctx,
-                      MaterialPageRoute(
-                        builder: (_) => ChoixCreneauPage(
-                          parentUid: widget.parentUid,
-                          doctorId: (data['doctorId'] ?? '').toString(),
-                          doctorName: (data['doctorName'] ?? '').toString(),
-                          patient: (data['patientNom'] ?? 'Patient').toString(),
-                          jourInitial: selectedDate,
-                          // Un rendez-vous deplace ne doit pas se voir
-                          // lui-meme comme l'obstacle a son deplacement.
-                          ignorerRdvId: rdvId,
+            content: _scrollableDialogContent(
+              context,
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextField(
+                    controller: motifCtrl,
+                    decoration: const InputDecoration(labelText: 'Motif'),
+                  ),
+                  const SizedBox(height: 12),
+                  // Deplacer un rendez-vous passait par les memes selecteurs
+                  // libres que la prise : on pouvait le poser sur un creneau
+                  // deja occupe et contourner toute la detection de conflit.
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.event_outlined),
+                    label: Text('$dateLabel a $timeLabel'),
+                    onPressed: () async {
+                      final creneau = await Navigator.push<Creneau>(
+                        ctx,
+                        MaterialPageRoute(
+                          builder: (_) => ChoixCreneauPage(
+                            parentUid: widget.parentUid,
+                            doctorId: (data['doctorId'] ?? '').toString(),
+                            doctorName: (data['doctorName'] ?? '').toString(),
+                            patient: (data['patientNom'] ?? 'Patient')
+                                .toString(),
+                            jourInitial: selectedDate,
+                            // Un rendez-vous deplace ne doit pas se voir
+                            // lui-meme comme l'obstacle a son deplacement.
+                            ignorerRdvId: rdvId,
+                          ),
                         ),
-                      ),
-                    );
-                    if (creneau == null) return;
-                    setState(() {
-                      selectedDate = DateTime(
-                        creneau.debut.year,
-                        creneau.debut.month,
-                        creneau.debut.day,
                       );
-                      selectedTime = TimeOfDay.fromDateTime(creneau.debut);
-                      dureeChoisie = creneau.duree;
-                    });
-                  },
-                ),
-              ],
-            )),
+                      if (creneau == null) return;
+                      setState(() {
+                        selectedDate = DateTime(
+                          creneau.debut.year,
+                          creneau.debut.month,
+                          creneau.debut.day,
+                        );
+                        selectedTime = TimeOfDay.fromDateTime(creneau.debut);
+                        dureeChoisie = creneau.duree;
+                      });
+                    },
+                  ),
+                ],
+              ),
+            ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
@@ -2342,9 +2304,7 @@ class _AssistantRdvTabState extends State<_AssistantRdvTab> {
                   : tous;
               final canLoadMore = tous.length > _limit;
               // Masque les rendez-vous des patients retires.
-              final docs = allDocs
-                  .where((d) => !isDeleted(d))
-                  .toList();
+              final docs = allDocs.where((d) => !isDeleted(d)).toList();
               if (docs.isEmpty) {
                 return const Center(child: Text('Aucun Rendez-vous planifie'));
               }
@@ -2552,11 +2512,8 @@ class _AssistantRdvTabState extends State<_AssistantRdvTab> {
                                         scheme,
                                       ),
                                     ),
-                                    onPressed: () => _noterAbsent(
-                                      context,
-                                      rdvId,
-                                      d,
-                                    ),
+                                    onPressed: () =>
+                                        _noterAbsent(context, rdvId, d),
                                   ),
                                 IconButton(
                                   tooltip: reminderTooltip,
@@ -2634,372 +2591,49 @@ class _RendezVousTab extends StatefulWidget {
 }
 
 class _RendezVousTabState extends State<_RendezVousTab> {
-  static const int _pageSize = 120;
-  static const int _lookbackDays = 7;
-  int _limit = _pageSize;
-  bool _showAll = false;
-  final Set<String> _closingWaitingIds = <String>{};
-
-  String _todayKey() {
-    final now = DateTime.now();
-    return '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+  void _openPatient(BuildContext context, Map<String, dynamic> data) {
+    final patientId = (data['patientId'] ?? '').toString();
+    final patientName = (data['patientNom'] ?? '').toString();
+    if (patientId.isEmpty) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PatientDetailsPage(
+          patientId: patientId,
+          patientName: patientName.isEmpty ? 'Patient' : patientName,
+          parentUid: widget.parentUid,
+          ownerProfileId: widget.profileId,
+          canAddForm: true,
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final mutedIcon = scheme.onSurface.withOpacity(0.65);
-    final now = DateTime.now();
-    final startOfDay = DateTime(now.year, now.month, now.day);
-    final endOfDay = startOfDay.add(const Duration(days: 1));
-    final recentCutoff = startOfDay.subtract(
-      const Duration(days: _lookbackDays),
-    );
-    final stream = ApiService.instance
-        .salleAttenteFlux(profileId: widget.profileId)
-        .map(
-          (liste) => _showAll
-              ? liste
-              : liste.where((e) {
-                  final c = asDateOrNull(e['createdAt']);
-                  return c == null || !c.isBefore(recentCutoff);
-                }).toList(),
-        );
-
-    return StreamBuilder<List<Map<String, dynamic>>>(
-      stream: stream,
-      builder: (context, snapshot) {
-        if (snapshot.hasError) {
-          return const Center(
-            child: Text('Erreur de chargement de la salle d\'attente'),
-          );
-        }
-        if (!snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        final docs = snapshot.data!;
-        final waiting = <Map<String, dynamic>>[];
-        final inConsultation = <Map<String, dynamic>>[];
-        final historyToday = <Map<String, dynamic>>[];
-
-        for (final data in docs) {
-          final status = (data['status'] ?? '').toString();
-          final closedTs = asDateOrNull(data['closedAt']);
-          final isDone = status == 'done' || closedTs != null;
-          if (isDone) {
-            if (closedTs != null &&
-                closedTs.isAfter(
-                  startOfDay.subtract(const Duration(milliseconds: 1)),
-                ) &&
-                closedTs.isBefore(endOfDay)) {
-              historyToday.add(data);
-            }
-            continue;
-          }
-          if (status == 'in_consultation') {
-            inConsultation.add(data);
-            continue;
-          }
-          waiting.add(data);
-        }
-
+    return SalleAttenteBoard(
+      profileId: widget.profileId,
+      headerActionsBuilder: (context, waiting, inConsultation) {
         final openEntries = [...waiting, ...inConsultation];
-        final canLoadMore = docs.length >= _limit;
-
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: Row(
-                children: [
-                  Text(
-                    'En consultation : ${inConsultation.length}',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 16,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    'Salle d\'attente : ${waiting.length}',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 16,
-                    ),
-                  ),
-                  const Spacer(),
-                  TextButton(
-                    onPressed: () => setState(() {
-                      _showAll = !_showAll;
-                      _limit = _pageSize;
-                    }),
-                    child: Text(_showAll ? 'Voir recents' : 'Voir tout'),
-                  ),
-                  if (openEntries.isNotEmpty) ...[
-                    const SizedBox(width: 6),
-                    ElevatedButton.icon(
-                      onPressed: () => _cloturerJournee(context, openEntries),
-                      icon: const Icon(Icons.lock_clock),
-                      label: const Text('Reinitialiser journee'),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.only(bottom: 12),
-                children: [
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    child: Text(
-                      'En consultation',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                  if (inConsultation.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                      child: Text('Aucun patient en consultation'),
-                    )
-                  else
-                    ...List.generate(inConsultation.length, (index) {
-                      final data =
-                          inConsultation[index];
-                      final patient = (data['patientNom'] ?? 'Patient')
-                          .toString();
-                      final doctor =
-                          (data['doctorName'] ?? data['doctorId'] ?? '')
-                              .toString();
-                      final assistant =
-                          (data['assistantName'] ?? data['assistantId'] ?? '')
-                              .toString();
-                      final seancesTotal = _toInt(data['nombreSeances']);
-                      final seancesDone = _toInt(data['seancesEffectuees']);
-                      final started = asDateOrNull(data['inConsultationAt']);
-                      final startStr = started != null
-                          ? '${started.hour.toString().padLeft(2, '0')}:${started.minute.toString().padLeft(2, '0')}'
-                          : '';
-                      return FluentCard(
-                        margin: const EdgeInsets.only(
-                          bottom: 12,
-                          left: 12,
-                          right: 12,
-                        ),
-                        padding: const EdgeInsets.all(14),
-                        child: ListTile(
-                          leading: const Icon(
-                            Icons.local_hospital,
-                            color: _DashboardAssistantState.primary,
-                          ),
-                          title: Text(patient),
-                          subtitle: MetaLine(items: [
-if (doctor.isNotEmpty) 'Dr $doctor',
-                              if (assistant.isNotEmpty) assistant,
-                              if (seancesDone != null || seancesTotal != null)
-                                'Séance ${seancesDone ?? 0}/${seancesTotal ?? '-'}',
-                              'En consultation depuis $startStr',
-]),
-                          trailing: Wrap(
-                            spacing: 8,
-                            children: [
-                              OutlinedButton(
-                                onPressed: () => _addVersement(
-                                  context,
-                                  inConsultation[index],
-                                ),
-                                child: const Text('Versement'),
-                              ),
-                              ElevatedButton(
-                                onPressed:
-                                    _closingWaitingIds.contains(
-                                      inConsultation[index]['id'].toString(),
-                                    )
-                                    ? null
-                                    : () => _cloturerPatient(
-                                        context,
-                                        inConsultation[index],
-                                      ),
-                                child:
-                                    _closingWaitingIds.contains(
-                                      inConsultation[index]['id'].toString(),
-                                    )
-                                    ? Row(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.center,
-                                        children: const [
-                                          SizedBox(
-                                            height: 16,
-                                            width: 16,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                            ),
-                                          ),
-                                          SizedBox(width: 8),
-                                          Text('Terminer...'),
-                                        ],
-                                      )
-                                    : const Text('Terminer'),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    }),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    child: Text(
-                      'Salle d\'attente',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                  if (waiting.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                      child: Text('Aucun patient en attente'),
-                    )
-                  else
-                    ListView.builder(
-                      itemCount: waiting.length,
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemBuilder: (context, index) {
-                        final data =
-                            waiting[index];
-                        final patient = (data['patientNom'] ?? 'Patient')
-                            .toString();
-                        final doctor =
-                            (data['doctorName'] ?? data['doctorId'] ?? '')
-                                .toString();
-                        final assistant =
-                            (data['assistantName'] ?? data['assistantId'] ?? '')
-                                .toString();
-                        final seancesTotal = _toInt(data['nombreSeances']);
-                        final seancesDone = _toInt(data['seancesEffectuees']);
-                        final created = asDateOrNull(data['createdAt']);
-                        final createdStr = created != null
-                            ? '${created.hour.toString().padLeft(2, '0')}:${created.minute.toString().padLeft(2, '0')}'
-                            : '';
-                        return FluentCard(
-                          margin: const EdgeInsets.only(
-                            bottom: 12,
-                            left: 12,
-                            right: 12,
-                          ),
-                          padding: const EdgeInsets.all(14),
-                          child: ListTile(
-                            leading: const Icon(
-                              Icons.meeting_room_outlined,
-                              color: _DashboardAssistantState.primary,
-                            ),
-                            title: Text(patient),
-                            subtitle: MetaLine(items: [
-if (doctor.isNotEmpty) 'Dr $doctor',
-                                if (assistant.isNotEmpty)
-                                  assistant,
-                                if (seancesDone != null || seancesTotal != null)
-                                  'Séance ${seancesDone ?? 0}/${seancesTotal ?? '-'}',
-                                'Arrivée $createdStr',
-]),
-                            trailing: Wrap(
-                              spacing: 8,
-                              children: [
-                                OutlinedButton(
-                                  onPressed: () =>
-                                      _addVersement(context, waiting[index]),
-                                  child: const Text('Versement'),
-                                ),
-                                OutlinedButton(
-                                  onPressed: () => _startConsultation(
-                                    context,
-                                    waiting[index],
-                                  ),
-                                  child: const Text('En consultation'),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  const Divider(),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    child: Text(
-                      'Historique du jour',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                  SizedBox(
-                    height: 160,
-                    child: historyToday.isEmpty
-                        ? const Center(child: Text('Aucun historique'))
-                        : ListView.builder(
-                            itemCount: historyToday.length,
-                            itemBuilder: (context, index) {
-                              final data =
-                                  historyToday[index]
-                                      as Map<String, dynamic>;
-                              final patient = (data['patientNom'] ?? 'Patient')
-                                  .toString();
-                              final doctor =
-                                  (data['doctorName'] ?? data['doctorId'] ?? '')
-                                      .toString();
-                              final assistant =
-                                  (data['assistantName'] ??
-                                          data['assistantId'] ??
-                                          '')
-                                      .toString();
-                              final seancesTotal = _toInt(
-                                data['nombreSeances'],
-                              );
-                              final seancesDone = _toInt(
-                                data['seancesEffectuees'],
-                              );
-                              final closed = asDateOrNull(data['closedAt']);
-                              final closedStr = closed != null
-                                  ? '${closed.hour.toString().padLeft(2, '0')}:${closed.minute.toString().padLeft(2, '0')}'
-                                  : '';
-                              return ListTile(
-                                leading: Icon(Icons.history, color: mutedIcon),
-                                title: Text(patient),
-                                subtitle: MetaLine(items: [
-if (doctor.isNotEmpty) 'Dr $doctor',
-                                    if (assistant.isNotEmpty)
-                                      assistant,
-                                    if (seancesDone != null ||
-                                        seancesTotal != null)
-                                      'Séance ${seancesDone ?? 0}/${seancesTotal ?? '-'}',
-                                    'Reçu $closedStr',
-]),
-                              );
-                            },
-                          ),
-                  ),
-                  if (canLoadMore)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      child: Center(
-                        child: OutlinedButton(
-                          onPressed: () => setState(() => _limit += _pageSize),
-                          child: const Text('Charger plus'),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ],
-        );
+        if (openEntries.isEmpty) return const [];
+        return [
+          const SizedBox(width: 6),
+          ElevatedButton.icon(
+            onPressed: () => _cloturerJournee(context, openEntries),
+            icon: const Icon(Icons.lock_clock),
+            label: const Text('Reinitialiser journee'),
+          ),
+        ];
       },
+      actions: SalleAttenteRowActions(
+        onConsulter: (ctx, entry) => _startConsultation(ctx, entry),
+        // Clôturer une consultation fixe le prix en même temps (c'est le
+        // médecin qui fait les deux à la fois, depuis son écran de
+        // consultation guidée) — l'assistant n'a plus de bouton "Terminer"
+        // qui clôturerait sans jamais demander de prix.
+        onVersement: (ctx, entry) => _ouvrirPaiement(ctx, entry),
+        onOuvrirDossier: (ctx, entry) => _openPatient(ctx, entry),
+      ),
     );
   }
 
@@ -3049,250 +2683,31 @@ if (doctor.isNotEmpty) 'Dr $doctor',
     }
   }
 
-  /// Imprime le recu d'un versement.
-  ///
-  /// L'identite du cabinet vient du profil qui encaisse : c'est lui qui
-  /// porte l'adresse et le telephone dans le reste de l'app.
-  Future<void> _imprimerRecu({
-    required Map<String, dynamic> patientData,
-    required double montant,
-    required double nouveauTotal,
-  }) async {
-    try {
-      final p = await ApiService.instance.profils().then(
-        (liste) => liste.firstWhere(
-          (x) => x['id'] == widget.profileId,
-          orElse: () => <String, dynamic>{},
-        ),
-      );
-
-      final patient = [
-        (patientData['nom'] ?? '').toString(),
-        (patientData['prenom'] ?? '').toString(),
-      ].where((s) => s.trim().isNotEmpty).join(' ');
-
-      // Le reglement est recalcule avec le total d'apres versement : le
-      // recu doit montrer l'etat du dossier une fois l'argent encaisse,
-      // pas celui d'avant.
-      final reglement = Reglement.fromPatient({
-        ...patientData,
-        'totalVersements': nouveauTotal,
-      });
-
-      final fichier = await RecuService().imprimer(
-        cabinet: [
-          (p['nom'] ?? '').toString(),
-          (p['prenom'] ?? '').toString(),
-        ].where((s) => s.trim().isNotEmpty).join(' '),
-        adresse: [
-          (p['address'] ?? p['adresse'] ?? '').toString(),
-          (p['wilaya'] ?? '').toString(),
-        ].where((s) => s.trim().isNotEmpty).join(', '),
-        telephone: (p['tel'] ?? p['telephone'] ?? '').toString(),
-        patient: patient.isEmpty ? 'Patient' : patient,
-        montant: montant,
-        date: DateTime.now(),
-        reglement: reglement,
-        encaissePar: (p['nom'] ?? '').toString(),
-        motif: (patientData['motif'] ?? '').toString(),
-      );
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Recu enregistre : ${fichier.path}')),
-      );
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Echec de la generation du recu')),
-      );
-    }
-  }
-
-  Future<void> _addVersement(
+  /// Ouvre le paiement dans le parcours d'accueil guide, directement a
+  /// l'etape Paiement : un seul composant de paiement dans toute l'app,
+  /// au lieu du dialog "Versement" et de la snackbar de recu d'avant.
+  Future<void> _ouvrirPaiement(
     BuildContext context,
-    Map<String, dynamic> doc,
+    Map<String, dynamic> entry,
   ) async {
-    final data = doc;
-    final patientId = (data['patientId'] ?? '').toString();
+    final patientId = (entry['patientId'] ?? '').toString();
     if (patientId.isEmpty) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Patient introuvable')));
-      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Patient introuvable')));
       return;
     }
-
-    Map<String, dynamic>? patientData;
-    try {
-      patientData = await ApiService.instance.patient(patientId);
-    } catch (_) {
-      patientData = null;
-    }
-    if (patientData == null) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Dossier patient non trouve')),
-        );
-      }
-      return;
-    }
-    final dossier = patientData;
-
-    final reglement = Reglement.fromPatient(patientData);
-    final currentTotal = reglement.verse;
-
-    final montantCtrl = TextEditingController();
-    final res = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Ajouter un versement'),
-        content: _scrollableDialogContent(context, Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // L'état du dossier avant toute saisie : le reste à payer est
-            // ce que l'assistant cherche neuf fois sur dix.
-            ReglementSummary(reglement: reglement),
-            const SizedBox(height: 14),
-            AppField.montant(
-              controller: montantCtrl,
-              label: 'Montant encaissé',
-              obligatoire: true,
-              autofocus: true,
-            ),
-            const SizedBox(height: 10),
-            // Un tap plutôt qu'une saisie : le geste le plus courant du
-            // cabinet est d'encaisser exactement le reste dû.
-            MontantsSuggeres(
-              suggestions: {
-                if (reglement.reste != null) 'Solde': reglement.reste!,
-                if (reglement.reste != null && reglement.reste! > 1)
-                  'Moitié': (reglement.reste! / 2).roundToDouble(),
-              },
-              onChoisi: (m) {
-                montantCtrl.text = m.toStringAsFixed(
-                  m.truncateToDouble() == m ? 0 : 2,
-                );
-              },
-            ),
-          ],
-        )),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Annuler'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Enregistrer'),
-          ),
-        ],
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AccueilPatientPage(
+          parentUid: widget.parentUid,
+          profileId: widget.profileId,
+          waitingService: widget.waitingService,
+          etapeInitiale: 2,
+          patientId: patientId,
+        ),
       ),
     );
-
-    if (res != true) return;
-
-    final montantText = montantCtrl.text.replaceAll(',', '.').trim();
-    final montant = double.tryParse(montantText);
-    if (montant == null) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Montant invalide')));
-      }
-      return;
-    }
-
-    final newTotal = currentTotal + montant;
-    try {
-      // Le versement, le total du dossier, le cache borne et la
-      // statistique du jour partaient en quatre ecritures : un batch sur
-      // les copies du dossier, puis une seconde ecriture pour les stats.
-      // Chacune pouvait echouer seule et fausser les chiffres du cabinet.
-      //
-      // C'est une transaction serveur. Le total passe par `$inc` au lieu
-      // d'etre lu puis reecrit : deux postes qui encaissent en meme temps
-      // ne s'ecrasent plus.
-      await ApiService.instance.encaisser(
-        patientId: patientId,
-        montant: montant,
-        auteurProfileId: widget.profileId,
-      );
-
-      if (context.mounted) {
-        // Un versement etait encaisse et rien n'etait imprime : le patient
-        // repartait sans trace, et le cabinet non plus. Une contestation
-        // trois mois plus tard ne se tranchait avec rien.
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Versement ajoute'),
-            action: SnackBarAction(
-              label: 'Imprimer le recu',
-              onPressed: () => _imprimerRecu(
-                patientData: dossier,
-                montant: montant,
-                nouveauTotal: newTotal,
-              ),
-            ),
-            duration: const Duration(seconds: 8),
-          ),
-        );
-      }
-    } catch (_) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Erreur lors de l\'ajout du versement')),
-        );
-      }
-    }
-  }
-
-  Future<void> _cloturerPatient(
-    BuildContext context,
-    Map<String, dynamic> doc,
-  ) async {
-    if (_closingWaitingIds.contains(doc['id'].toString())) return;
-    setState(() => _closingWaitingIds.add(doc['id'].toString()));
-    final data = doc;
-    try {
-      await _incrementSeancePatient(data);
-      final updatedDone =
-          ((data['seancesEffectuees'] as num?)?.toInt() ?? 0) + 1;
-      await widget.waitingService.closeEntryForAll(
-        parentUid: widget.parentUid,
-        profileId: widget.profileId,
-        waitingId: doc['id'].toString(),
-        doctorId: (data['doctorId'] ?? '').toString(),
-        assistantId: (data['assistantId'] ?? '').toString(),
-        patientId: (data['patientId'] ?? '').toString(),
-        seancesEffectuees: updatedDone,
-      );
-      if (context.mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Patient marque recu')));
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _closingWaitingIds.remove(doc['id'].toString()));
-      }
-    }
-  }
-
-  /// Decompte une seance.
-  ///
-  /// Le batch ecrivait l'increment sur les trois copies du dossier — celle
-  /// du profil, celle du medecin, celle de l'assistant — parce que
-  /// Firestore n'avait pas de document unique. Il n'y en a plus qu'un.
-  Future<void> _incrementSeancePatient(Map<String, dynamic> data) async {
-    final patientId = (data['patientId'] ?? '').toString();
-    if (patientId.isEmpty) return;
-
-    final dossier = await ApiService.instance.patient(patientId);
-    await ApiService.instance.majPatient(patientId, {
-      'seancesEffectuees': asInt(dossier['seancesEffectuees']) + 1,
-    });
   }
 }

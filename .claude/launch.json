@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "n8n",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["n8n"],
+      "port": 5678
+    }
+  ]
+}

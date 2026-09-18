@@ -4,7 +4,7 @@ rules_version = '2';
 //  Ordimed — regles de securite Firestore
 //
 //  Principe : un compte Firebase Auth = un cabinet = un espace
-//  users/{uid}. Personne ne lit ni n'ecrit hors du sien.
+//  cabinets/{uid}. Personne ne lit ni n'ecrit hors du sien.
 //
 //  Deploiement :  firebase deploy --only firestore:rules
 // =============================================================
@@ -21,25 +21,18 @@ service cloud.firestore {
       return signedIn() && request.auth.uid == uid;
     }
 
-    // Pour les requetes collectionGroup, le chemin ne porte plus l'uid :
-    // c'est le champ parentUid du document qui fait foi.
-    //
-    // Volontairement reduit a la seule egalite : sur une requete, Firestore
-    // ne lit pas les documents un par un, il verifie statiquement que les
-    // filtres garantissent la regle. Un controle de type ne se prouve par
-    // aucun filtre et ferait refuser la requete entiere.
-    function ownsDoc() {
-      return signedIn() && resource.data.parentUid == request.auth.uid;
-    }
-
     // ---------------------------------------------------------
     //  L'espace complet d'un cabinet
     //
-    //  Couvre users/{uid} et TOUT ce qui pend dessous :
-    //  comptes, patients, forms, salle_attente, rendezvous,
-    //  purchases, daily_stats.
+    //  Couvre cabinets/{uid} et TOUT ce qui pend dessous :
+    //  profiles, patients, forms, versements, rendezvous,
+    //  salle_attente, purchases, daily_stats.
+    //
+    //  Le controle porte sur le chemin et non sur un champ, ce qui
+    //  le rend insensible a ce que l'app envoie : un poste ne peut
+    //  pas atteindre un autre cabinet, meme en forgeant parentUid.
     // ---------------------------------------------------------
-    match /users/{uid} {
+    match /cabinets/{uid} {
       allow read, write: if owner(uid);
 
       match /{sousDocument=**} {
@@ -48,37 +41,41 @@ service cloud.firestore {
     }
 
     // ---------------------------------------------------------
-    //  Requetes collectionGroup
+    //  Journal d'erreurs
     //
-    //  Ces trois requetes traversent les cabinets, donc les regles
-    //  ci-dessus (basees sur le chemin) ne s'appliquent pas. Chaque
-    //  requete DOIT filtrer sur parentUid, sinon Firestore la refuse
-    //  — c'est exactement ce qui empeche un cabinet de lire un autre.
+    //  En ecriture seule depuis l'app : un poste depose son rapport
+    //  et n'a aucune raison de relire ceux des autres. La lecture se
+    //  fait depuis la console Firebase.
     //
-    //  Lecture seule : toutes les ecritures passent par le chemin
-    //  complet, donc par les regles du bloc precedent.
+    //  parentUid doit etre celui du connecte, sinon un poste pourrait
+    //  remplir le journal d'un autre cabinet.
     // ---------------------------------------------------------
-
-    // firestore_service.dart — allPatientsStream()
-    match /{chemin=**}/patients/{patientId} {
-      allow read: if ownsDoc();
+    match /errors/{errorId} {
+      allow create: if signedIn()
+                    && request.resource.data.parentUid == request.auth.uid;
+      allow read, update, delete: if false;
     }
 
-    // dashboards — achats du jour et historique
-    match /{chemin=**}/purchases/{achatId} {
-      allow read: if ownsDoc();
-    }
+    // ---------------------------------------------------------
+    //  Ancienne arborescence, conservee en lecture pour son
+    //  proprietaire.
+    //
+    //  La premiere version de l'app ecrivait sous users/{uid}, en
+    //  sous-collections par profil. Plus rien n'y ecrit, mais les
+    //  cabinets d'avant la bascule y ont encore leurs dossiers : les
+    //  couper rendrait ces donnees inaccessibles a ceux a qui elles
+    //  appartiennent, y compris pour une reprise.
+    // ---------------------------------------------------------
+    match /users/{uid} {
+      allow read: if owner(uid);
 
-    // patient_details_page.dart — documents d'un patient
-    match /{chemin=**}/forms/{formId} {
-      allow read: if ownsDoc();
+      match /{sousDocument=**} {
+        allow read: if owner(uid);
+      }
     }
 
     // ---------------------------------------------------------
     //  Tout le reste est refuse par defaut.
-    //  (Aucune regle = aucun acces, y compris la collection 'tmp'
-    //  que le code utilise uniquement pour generer des identifiants
-    //  cote client, sans jamais lire ni ecrire.)
     // ---------------------------------------------------------
   }
 }

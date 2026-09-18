@@ -28,11 +28,17 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     startup_info.cb = sizeof(startup_info);
     PROCESS_INFORMATION process_info = {};
     std::wstring mutable_command = relaunch_command;
-    if (::CreateProcessW(nullptr, &mutable_command[0], nullptr, nullptr, FALSE, 0,
+    // bInheritHandles=TRUE : le process enfant hérite des pipes de stdout/stderr
+    // que flutter run a mis en place pour son log reader. Le parent attend la fin
+    // de l'enfant pour ne pas couper ces pipes prématurément.
+    if (::CreateProcessW(nullptr, &mutable_command[0], nullptr, nullptr, TRUE, 0,
                          nullptr, nullptr, &startup_info, &process_info)) {
       ::CloseHandle(process_info.hThread);
+      ::WaitForSingleObject(process_info.hProcess, INFINITE);
+      DWORD exit_code = 0;
+      ::GetExitCodeProcess(process_info.hProcess, &exit_code);
       ::CloseHandle(process_info.hProcess);
-      return EXIT_SUCCESS;
+      return static_cast<int>(exit_code);
     }
   }
 

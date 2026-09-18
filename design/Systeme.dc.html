@@ -1,0 +1,239 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif; background: #0A0C0D; color: #EAEFF1; -webkit-font-smoothing: antialiased; }
+    a { color: #2FE0BE; text-decoration: none; }
+    a:hover { color: #5FEBD0; }
+    .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+
+    @keyframes rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+    .rise { animation: rise .55s cubic-bezier(.22,.8,.3,1) both; }
+
+    .lbl { font-size: 10.5px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; color: #667276; }
+    .carte { background: #15191B; border: 1px solid rgba(255,255,255,.07); border-radius: 9px; padding: 18px; }
+    .titre { font-size: 13px; font-weight: 600; margin-bottom: 14px; }
+
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 13px; border-radius: 6px; border: 1px solid rgba(255,255,255,.13); background: #1B2023; color: #EAEFF1; font: 500 12.5px "IBM Plex Sans", sans-serif; cursor: pointer; transition: background .16s ease, border-color .16s ease; }
+    .btn:hover { background: #262D30; border-color: rgba(255,255,255,.2); }
+    .btn.pri { background: #2FE0BE; border-color: #2FE0BE; color: #062B25; font-weight: 600; }
+    .btn.cash { background: #F0A93B; border-color: #F0A93B; color: #2A1C05; font-weight: 600; }
+    .btn.off { background: #15191B; border-color: rgba(255,255,255,.08); color: #4E585C; cursor: default; }
+
+    .puce { display: inline-flex; align-items: center; gap: 6px; height: 25px; padding: 0 10px; border-radius: 999px; font-size: 11.5px; font-weight: 500; }
+  </style>
+</helmet>
+
+<div style="width: 1200px; height: 1240px; background: #0A0C0D; padding: 32px 36px; display: flex; flex-direction: column; gap: 18px; overflow: hidden;">
+
+  <header class="rise" style="display: flex; align-items: flex-end; gap: 16px; padding-bottom: 18px; border-bottom: 1px solid rgba(255,255,255,.08);">
+    <div style="width: 30px; height: 30px; border-radius: 8px; background: #2FE0BE; display: flex; align-items: center; justify-content: center;">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#062B25" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg>
+    </div>
+    <div style="flex: 1;">
+      <h1 style="font-size: 22px; font-weight: 600; letter-spacing: -.025em; margin: 0;">Le système</h1>
+      <p style="font-size: 12.5px; color: #96A1A6; margin: 4px 0 0;">Les jetons à porter dans <span class="mono" style="color: #2FE0BE;">lib/ui/app_theme.dart</span></p>
+    </div>
+    <div class="mono" style="font-size: 11px; color: #566165; text-align: right; line-height: 1.7;">
+      IBM Plex Sans · IBM Plex Mono<br>Sombre par défaut
+    </div>
+  </header>
+
+  <!-- ── Couleurs ─────────────────────────────────────── -->
+  <section class="carte rise" style="animation-delay: .05s">
+    <div class="titre">Couleurs</div>
+
+    <div class="lbl" style="margin-bottom: 9px;">Surfaces — quatre plans, très proches</div>
+    <div style="display: flex; gap: 9px; margin-bottom: 18px;">
+      <sc-for list="{{ surfaces }}" as="s" hint-placeholder-count="5">
+        <div style="flex: 1;">
+          <div style="height: 48px; border-radius: 7px; background: {{ s.hex }}; border: 1px solid rgba(255,255,255,.09);"></div>
+          <div style="font-size: 11.5px; font-weight: 500; margin-top: 7px;">{{ s.nom }}</div>
+          <div class="mono" style="font-size: 10.5px; color: #667276;">{{ s.hex }}</div>
+          <div style="font-size: 10.5px; color: #566165; margin-top: 2px;">{{ s.usage }}</div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div class="lbl" style="margin-bottom: 9px;">Encres</div>
+    <div style="display: flex; gap: 9px; margin-bottom: 18px;">
+      <sc-for list="{{ encres }}" as="e" hint-placeholder-count="3">
+        <div style="flex: 1; padding: 11px 13px; border-radius: 7px; background: #1B2023; border: 1px solid rgba(255,255,255,.06);">
+          <div style="font-size: 14px; font-weight: 500; color: {{ e.hex }};">{{ e.exemple }}</div>
+          <div class="mono" style="font-size: 10.5px; color: #667276; margin-top: 6px;">{{ e.hex }} · {{ e.nom }}</div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div class="lbl" style="margin-bottom: 9px;">Accents — interface</div>
+    <div style="display: flex; gap: 9px; margin-bottom: 16px;">
+      <sc-for list="{{ accents }}" as="a" hint-placeholder-count="4">
+        <div style="flex: 1;">
+          <div style="height: 40px; border-radius: 7px; background: {{ a.hex }};"></div>
+          <div style="font-size: 11.5px; font-weight: 500; margin-top: 7px;">{{ a.nom }}</div>
+          <div class="mono" style="font-size: 10.5px; color: #667276;">{{ a.hex }}</div>
+          <div style="font-size: 10.5px; color: #566165; margin-top: 2px;">{{ a.usage }}</div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="display: flex; gap: 11px; padding: 12px 14px; border-radius: 8px; background: rgba(47,224,190,.05); border: 1px solid rgba(47,224,190,.18);">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#2FE0BE" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; margin-top: 1px;"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.6v.6"/></svg>
+      <div>
+        <div style="font-size: 12px; font-weight: 500; margin-bottom: 5px;">Les graphiques ont leurs propres teintes</div>
+        <div style="font-size: 11.5px; color: #96A1A6; line-height: 1.6;">
+          Les accents d'interface sont trop clairs pour des barres sur fond sombre. Les marques
+          utilisent <span class="mono" style="color: #1FA894;">#1FA894</span> et
+          <span class="mono" style="color: #C77F17;">#C77F17</span> — validés pour le daltonisme
+          (ΔE 14,0 en deutéranopie) et le contraste sur la surface des cartes.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div style="display: flex; gap: 18px; flex: 1; min-height: 0;">
+
+    <!-- ── Typographie ────────────────────────────────── -->
+    <section class="carte rise" style="flex: 1.15; animation-delay: .11s">
+      <div class="titre">Typographie</div>
+
+      <div style="display: flex; flex-direction: column; gap: 13px;">
+        <sc-for list="{{ echelle }}" as="t" hint-placeholder-count="6">
+          <div style="display: flex; align-items: baseline; gap: 14px; padding-bottom: 13px; border-bottom: 1px solid rgba(255,255,255,.055);">
+            <div style="flex: 1; min-width: 0; font-family: {{ t.police }}; font-size: {{ t.px }}px; font-weight: {{ t.poids }}; letter-spacing: {{ t.espace }}; color: {{ t.ink }}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ t.exemple }}</div>
+            <div class="mono" style="font-size: 10.5px; color: #667276; flex-shrink: 0; text-align: right;">{{ t.px }}/{{ t.poids }}</div>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="margin-top: 15px; padding: 12px 14px; border-radius: 8px; background: #1B2023; border: 1px solid rgba(255,255,255,.06);">
+        <div class="lbl" style="margin-bottom: 8px;">Pourquoi deux polices</div>
+        <div style="font-size: 11.5px; color: #96A1A6; line-height: 1.65;">
+          Plex Mono porte tous les montants, heures et numéros : ses chiffres sont tabulaires,
+          donc une colonne de dinars s'aligne au chiffre près. Plex Sans porte le reste, et sa
+          variante arabe couvre les ordonnances bilingues.
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Formes et composants ───────────────────────── -->
+    <section class="carte rise" style="flex: 1; display: flex; flex-direction: column; animation-delay: .17s">
+      <div class="titre">Formes et rythme</div>
+
+      <div style="display: flex; gap: 9px; margin-bottom: 18px;">
+        <sc-for list="{{ rayons }}" as="r" hint-placeholder-count="3">
+          <div style="flex: 1; text-align: center;">
+            <div style="height: 42px; border-radius: {{ r.px }}px; background: #242B2E; border: 1px solid rgba(255,255,255,.1);"></div>
+            <div class="mono" style="font-size: 11px; margin-top: 7px;">{{ r.px }} px</div>
+            <div style="font-size: 10.5px; color: #566165;">{{ r.nom }}</div>
+          </div>
+        </sc-for>
+      </div>
+
+      <div class="lbl" style="margin-bottom: 9px;">Boutons — hauteur 32 px</div>
+      <div style="display: flex; gap: 7px; flex-wrap: wrap; margin-bottom: 18px;">
+        <button class="btn pri">Action principale</button>
+        <button class="btn">Secondaire</button>
+        <button class="btn cash">Encaisser</button>
+        <button class="btn off">Inactif</button>
+      </div>
+
+      <div class="lbl" style="margin-bottom: 9px;">États</div>
+      <div style="display: flex; gap: 7px; flex-wrap: wrap; margin-bottom: 18px;">
+        <sc-for list="{{ etats }}" as="e" hint-placeholder-count="4">
+          <span class="puce" style="background: {{ e.bg }}; color: {{ e.ink }};">
+            <span style="width: 6px; height: 6px; border-radius: 999px; background: {{ e.ink }};"></span>
+            {{ e.nom }}
+          </span>
+        </sc-for>
+      </div>
+
+      <div class="lbl" style="margin-bottom: 9px;">Ligne de liste</div>
+      <div style="display: flex; align-items: center; gap: 11px; padding: 11px 13px; border-radius: 8px; background: #1B2023; border: 1px solid rgba(255,255,255,.07);">
+        <div class="mono" style="width: 30px; height: 30px; border-radius: 8px; background: #2FE0BE; color: #062B25; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600;">BY</div>
+        <div style="flex: 1; min-width: 0;">
+          <div style="font-size: 13px; font-weight: 500;">Benali Yacine</div>
+          <div style="font-size: 11.5px; color: #96A1A6;">Suivi nutritionnel</div>
+        </div>
+        <span class="mono" style="font-size: 12.5px; color: #F0A93B;">3 600 DA</span>
+      </div>
+
+      <div style="margin-top: auto; padding-top: 15px;">
+        <div class="lbl" style="margin-bottom: 9px;">Ce qui change dans app_theme.dart</div>
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <sc-for list="{{ deltas }}" as="d" hint-placeholder-count="4">
+            <div style="display: flex; align-items: center; gap: 9px; font-size: 11.5px;">
+              <span class="mono" style="color: #96A1A6; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ d.jeton }}</span>
+              <span class="mono" style="color: #667276; text-decoration: line-through;">{{ d.avant }}</span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#414A4E" stroke-width="2" stroke-linecap="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg>
+              <span class="mono" style="color: #2FE0BE; font-weight: 500;">{{ d.apres }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":1200,"height":1240}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      surfaces: [
+        { nom: 'Fond',     hex: '#0A0C0D', usage: 'la page' },
+        { nom: 'Panneau',  hex: '#101315', usage: 'rail, barres' },
+        { nom: 'Carte',    hex: '#15191B', usage: 'sections' },
+        { nom: 'Relief',   hex: '#1B2023', usage: 'lignes, champs' },
+        { nom: 'Survol',   hex: '#262D30', usage: 'états' },
+      ],
+      encres: [
+        { nom: 'principale', hex: '#EAEFF1', exemple: 'Benali Yacine' },
+        { nom: 'secondaire', hex: '#96A1A6', exemple: 'Suivi nutritionnel' },
+        { nom: 'tertiaire',  hex: '#667276', exemple: 'il y a 16 jours' },
+      ],
+      accents: [
+        { nom: 'Menthe',  hex: '#2FE0BE', usage: 'action, actif' },
+        { nom: 'Ambre',   hex: '#F0A93B', usage: 'argent dû' },
+        { nom: 'Violet',  hex: '#9B8CFA', usage: 'ordonnances' },
+        { nom: 'Corail',  hex: '#FF6470', usage: 'danger' },
+      ],
+      echelle: [
+        { exemple: '15 800 DA',        px: 34, poids: 500, espace: '-.03em', police: '"IBM Plex Mono", monospace', ink: '#2FE0BE' },
+        { exemple: 'Qui prend le poste ?', px: 22, poids: 600, espace: '-.025em', police: '"IBM Plex Sans", sans-serif', ink: '#EAEFF1' },
+        { exemple: "File d'attente",   px: 14, poids: 600, espace: '-.01em', police: '"IBM Plex Sans", sans-serif', ink: '#EAEFF1' },
+        { exemple: 'Benali Yacine',    px: 13, poids: 500, espace: '0', police: '"IBM Plex Sans", sans-serif', ink: '#EAEFF1' },
+        { exemple: 'Suivi nutritionnel', px: 12, poids: 400, espace: '0', police: '"IBM Plex Sans", sans-serif', ink: '#96A1A6' },
+        { exemple: 'RESTE À PAYER',    px: 10.5, poids: 600, espace: '.09em', police: '"IBM Plex Sans", sans-serif', ink: '#667276' },
+      ],
+      rayons: [
+        { px: 6,  nom: 'contrôles' },
+        { px: 9,  nom: 'cartes' },
+        { px: 999, nom: 'puces' },
+      ],
+      etats: [
+        { nom: 'En cours',    bg: 'rgba(47,224,190,.14)',  ink: '#2FE0BE' },
+        { nom: 'En attente',  bg: 'rgba(255,255,255,.07)', ink: '#96A1A6' },
+        { nom: 'À régler',    bg: 'rgba(240,169,59,.14)',  ink: '#F0A93B' },
+        { nom: 'Absent',      bg: 'rgba(255,100,112,.13)', ink: '#FF6470' },
+      ],
+      deltas: [
+        { jeton: 'rCard',   avant: '20',      apres: '9' },
+        { jeton: 'rButton', avant: '14',      apres: '6' },
+        { jeton: 'police',  avant: 'Jakarta', apres: 'Plex' },
+        { jeton: 'fond',    avant: 'dégradé', apres: '#0A0C0D' },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

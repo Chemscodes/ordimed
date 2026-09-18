@@ -219,7 +219,7 @@ class _AddPatientFormState extends State<AddPatientForm> {
       // dossier visible d'un cote et absent de l'autre.
       //
       // C'est une requete, et une transaction cote serveur.
-      await ApiService.instance.creerPatient({
+      final patientCree = await ApiService.instance.creerPatient({
         'nom': nom.text.trim(),
         'prenom': prenom.text.trim(),
         if (ageValue != null) 'age': ageValue,
@@ -247,7 +247,10 @@ class _AddPatientFormState extends State<AddPatientForm> {
             ),
           ),
         );
-      Navigator.pop(context);
+      // Le patient cree part avec le pop : un appelant guide (l'accueil
+      // patient) a besoin de savoir qui vient d'etre cree, sans repartir
+      // en quete du dossier.
+      Navigator.pop(context, patientCree);
     } catch (_) {
       await _erreur("Erreur lors de l'enregistrement");
     } finally {

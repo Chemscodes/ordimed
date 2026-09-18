@@ -70,29 +70,76 @@ courbe des sept derniers jours. Montants en dinars algériens.
 
 ## Architecture
 
-Application Flutter compilée en natif pour Windows, branchée directement sur Firebase
-(authentification + base temps réel). Pas de serveur intermédiaire à administrer : le
-cabinet installe l'application et les postes se synchronisent entre eux.
+Application Flutter compilée en natif pour Windows, capable de fonctionner sur **deux
+bases au choix**. Le cabinet décide laquelle à l'installation, depuis l'écran de
+connexion ; le reste de l'application ne sait pas laquelle répond.
 
-Toutes les listes sont des flux temps réel — quand l'assistant inscrit un patient, la
-salle d'attente du médecin se met à jour sans rafraîchissement.
+| | **Firebase** (par défaut) | **Serveur du cabinet** |
+|---|---|---|
+| À installer | rien | un poste qui fait tourner le backend Node |
+| Données | Firestore | MongoDB, chez le cabinet |
+| Temps réel | `snapshots()`, poussé | Socket.IO, rechargement sur annonce |
+| Hors ligne | cache local, le cabinet continue | serveur joignable ou pas |
+| Logique métier | dans l'application | sur le serveur |
 
-### Modèle de données (Cloud Firestore)
+Toutes les listes sont des flux temps réel des deux côtés — quand l'assistant inscrit un
+patient, la salle d'attente du médecin se met à jour sans rafraîchissement.
+
+### Ce qui rend la bascule possible
+
+Un seul contrat, [`CabinetBackend`](lib/services/cabinet_backend.dart), que les deux
+implémentations respectent. `ApiService` choisit l'une ou l'autre selon
+[`BackendConfig`](lib/services/backend_config.dart), et les écrans n'importent que la
+façade :
 
 ```
-users/{cabinet}
- ├── comptes/{profil}            rôle, code d'accès, en-tête d'ordonnance
- │    ├── patients/{patient}     identité, forfait, versements, séances
- │    │    └── forms/{document}  bilans, ordonnances, formulaires
- │    ├── salle_attente/{ligne}  en attente · en consultation · reçu
- │    ├── rendezvous/{rdv}       date, motif, rappel envoyé
- │    └── purchases/{achat}      dépenses du cabinet
- └── daily_stats/{jour}          recettes, achats, net, détail par médecin
+pages/  ──►  ApiService  ──►  CabinetBackend  ──┬─►  FirebaseCabinetBackend  ──►  Firestore
+                                                └─►  MongoCabinetBackend     ──►  API Node
 ```
 
-Firestore ne fait pas de jointures : les documents partagés (patient, ligne de salle
-d'attente, rendez-vous) sont écrits en une copie par profil concerné, via des écritures
-groupées atomiques. Chaque poste lit ainsi uniquement sa propre branche.
+La contrainte qui fait tenir l'ensemble : **les deux backends rendent les mêmes clés**.
+`id` pour l'identifiant, `createdAt` en ISO 8601, et les champs métier nommés comme les
+modèles MongoDB. La conversion côté Firestore est faite au même endroit, dans
+[`firebase_refs.dart`](lib/services/firebase/firebase_refs.dart).
+
+### Modèle de données
+
+À plat des deux côtés, avec les mêmes noms de champs.
+
+```
+cabinets/{cabinet}              horaires, motifs prédéfinis, listes de référence
+ ├── profiles/{profil}          rôle, code d'accès haché, en-tête d'ordonnance
+ ├── patients/{patient}         identité, forfait, versements, séances
+ ├── forms/{document}           bilans, ordonnances, formulaires
+ ├── versements/{versement}     historique complet des règlements
+ ├── rendezvous/{rdv}           date, motif, étape, rappel envoyé
+ ├── salle_attente/{ligne}      en attente · en consultation · reçu
+ ├── purchases/{achat}          dépenses du cabinet
+ └── daily_stats/{jour}         recettes, achats, net, détail par médecin
+```
+
+La première version Firestore était arborescente — `users/{uid}/comptes/{profil}/patients`
+— et, faute de jointures, écrivait chaque patient deux fois et chaque ligne de salle
+d'attente trois fois. Les copies finissaient par diverger en silence. `doctorId` et
+`assistantId` sont désormais des champs filtrés à la requête : une seule copie, et le
+même schéma des deux côtés.
+
+### Ce que le sans-serveur coûte
+
+Sur la branche Firebase, la logique métier redescend dans l'application. Trois choses
+sont reconstruites à l'identique, une quatrième ne peut pas l'être :
+
+- **écritures liées** (encaisser, clôturer) — `runTransaction`, réellement atomique ;
+- **totaux de caisse** — `FieldValue.increment`, juste même à deux postes simultanés ;
+- **code PIN** — haché en SHA-256, jamais stocké en clair. Mais la comparaison a lieu
+  dans l'application : qui lit la base ne voit pas les codes, qui modifie le binaire peut
+  contourner le contrôle. Côté Node, bcrypt sur le serveur ne laissait pas cette porte ;
+- **conflits de créneaux** — détectés par une requête faite juste avant l'écriture, car
+  Firestore ne sait pas requêter dans une transaction. Deux postes qui posent la même
+  heure à la même seconde peuvent passer tous les deux.
+
+Un cabinet très fréquenté gagne donc à rester sur le serveur local. Un cabinet qui ne
+veut rien administrer prend Firebase et accepte ces quatre lignes.
 
 ### Organisation du code
 
@@ -112,11 +159,18 @@ lib/
 │   ├── patient_details_page.dart dossier, ordonnances, bilans, PDF
 │   └── stats_page.dart          statistiques du cabinet
 ├── services/
-│   ├── auth_service.dart        authentification Firebase
-│   ├── firestore_service.dart   flux patients, rendez-vous, documents
-│   ├── waiting_service.dart     salle d'attente partagée
-│   ├── rendezvous_repository.dart  planification des rendez-vous
-│   └── stats_service.dart       agrégats financiers journaliers
+│   ├── backend_config.dart      quelle base, et comment en changer
+│   ├── cabinet_backend.dart     le contrat que les deux respectent
+│   ├── auth_backend.dart        le contrat d'ouverture de session
+│   ├── api_service.dart         façade : choisit l'implémentation
+│   ├── auth_service.dart        façade : choisit l'authentification
+│   ├── firebase/
+│   │   ├── firebase_cabinet_backend.dart  tout le métier sur Firestore
+│   │   ├── firebase_auth_backend.dart     Firebase Auth
+│   │   └── firebase_refs.dart             chemins et conversions
+│   └── mongo/
+│       ├── mongo_cabinet_backend.dart     appels à l'API Node
+│       └── mongo_auth_backend.dart        jeton JWT et sa persistance
 ├── ui/                          composants et thème (AppShell, cartes, boutons)
 └── widgets/                     cartes métier réutilisables
 ```
@@ -143,7 +197,12 @@ Détail complet dans [`PERFORMANCE_FIX.md`](PERFORMANCE_FIX.md).
 
 - [Flutter SDK](https://docs.flutter.dev/get-started/install) 3.8.1 ou supérieur
 - Visual Studio avec la charge de travail « Développement Desktop en C++ » (build Windows)
-- Un projet [Firebase](https://console.firebase.google.com) avec Authentication (e-mail/mot de passe) et Cloud Firestore activés
+
+Selon la base retenue :
+
+- **Firebase** — un projet [Firebase](https://console.firebase.google.com) avec
+  Authentication (e-mail/mot de passe) et Cloud Firestore activés
+- **Serveur du cabinet** — Node 18+ et MongoDB, sur le poste qui fera serveur
 
 ### Mise en route
 
@@ -153,23 +212,45 @@ cd ordimed
 flutter pub get
 ```
 
-Configurer Firebase pour le projet :
+#### Sur Firebase
 
 ```bash
 dart pub global activate flutterfire_cli
 flutterfire configure
 ```
 
-Déployer les index Firestore (nécessaire au bon fonctionnement des écrans financiers) :
+Déployer les règles de sécurité — elles sont ce qui empêche un cabinet de lire un autre,
+rien ne fonctionne correctement sans elles :
 
 ```bash
-firebase deploy --only firestore:indexes
+firebase deploy --only firestore:rules
 ```
 
-Lancer :
+Aucun index composite n'est nécessaire : les requêtes sont mono-champ, servies par les
+index automatiques de Firestore.
+
+#### Sur le serveur du cabinet
+
+```bash
+cd backend
+npm install
+npm start
+```
+
+Les autres postes indiquent l'adresse de celui-ci depuis l'écran de connexion
+(**Serveur → Modifier**).
+
+### Lancer
 
 ```bash
 flutter run -d windows
+```
+
+La base se choisit depuis l'écran de connexion, et le choix est retenu. Pour produire un
+binaire destiné à un cabinet qui n'aura jamais à choisir, la figer à la compilation :
+
+```bash
+flutter run -d windows --dart-define=BACKEND=mongo
 ```
 
 Mode allégé pour les postes anciens :

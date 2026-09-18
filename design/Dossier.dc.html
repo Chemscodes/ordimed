@@ -1,0 +1,358 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif; background: #0A0C0D; color: #EAEFF1; -webkit-font-smoothing: antialiased; }
+    a { color: #2FE0BE; text-decoration: none; }
+    a:hover { color: #5FEBD0; }
+    .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+
+    @keyframes rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+    .rise { animation: rise .55s cubic-bezier(.22,.8,.3,1) both; }
+    @keyframes grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+    .grow { animation: grow .85s cubic-bezier(.22,.8,.3,1) both; transform-origin: left center; }
+    @keyframes deplier { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: none; } }
+    .deplier { animation: deplier .32s cubic-bezier(.22,.8,.3,1) both; }
+
+    .nav { display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 10px; border-radius: 6px; color: #96A1A6; font-size: 13px; cursor: pointer; transition: background .16s ease, color .16s ease; }
+    .nav:hover { background: #1B2023; color: #EAEFF1; }
+    .nav.on { background: #1B2023; color: #EAEFF1; font-weight: 500; }
+    .nav.on svg { color: #2FE0BE; }
+
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 13px; border-radius: 6px; border: 1px solid rgba(255,255,255,.13); background: #1B2023; color: #EAEFF1; font: 500 12.5px "IBM Plex Sans", sans-serif; cursor: pointer; transition: background .16s ease, border-color .16s ease; }
+    .btn:hover { background: #262D30; border-color: rgba(255,255,255,.2); }
+    .btn.pri { background: #2FE0BE; border-color: #2FE0BE; color: #062B25; font-weight: 600; }
+    .btn.pri:hover { background: #55E8CD; border-color: #55E8CD; }
+
+    .lbl { font-size: 10.5px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; color: #667276; }
+
+    /* Une visite : l'entête cliquable, le détail dessous */
+    .visite { border-radius: 9px; border: 1px solid rgba(255,255,255,.07); background: #15191B; overflow: hidden; transition: border-color .18s ease; }
+    .visite.on { border-color: rgba(47,224,190,.3); }
+    .vtete { display: flex; align-items: center; gap: 13px; padding: 12px 14px; cursor: pointer; transition: background .16s ease; }
+    .vtete:hover { background: #1B2023; }
+
+    .doc { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border-radius: 7px; background: #1B2023; border: 1px solid rgba(255,255,255,.05); cursor: pointer; transition: background .15s ease, border-color .15s ease; }
+    .doc:hover { background: #242B2E; border-color: rgba(255,255,255,.12); }
+
+    .mesure { flex: 1; padding: 10px 12px; border-radius: 8px; background: #1B2023; border: 1px solid rgba(255,255,255,.05); }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; display: flex; overflow: hidden; background: #0A0C0D;">
+
+  <aside style="width: 232px; flex-shrink: 0; background: #101315; border-right: 1px solid rgba(255,255,255,.07); display: flex; flex-direction: column;">
+    <div style="height: 52px; display: flex; align-items: center; gap: 9px; padding: 0 16px; border-bottom: 1px solid rgba(255,255,255,.07);">
+      <div style="width: 22px; height: 22px; border-radius: 6px; background: #2FE0BE; display: flex; align-items: center; justify-content: center;">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#062B25" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg>
+      </div>
+      <span style="font-size: 14px; font-weight: 600; letter-spacing: -.01em;">Ordimed</span>
+    </div>
+    <nav style="padding: 14px 10px; display: flex; flex-direction: column; gap: 2px;">
+      <div class="lbl" style="padding: 0 10px 8px;">Consultation</div>
+      <div class="nav rise" style="animation-delay: .02s">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M17 9h4M19 7v4"/></svg>
+        File d'attente
+        <span class="mono" style="margin-left: auto; font-size: 11px; background: #2FE0BE; color: #062B25; padding: 1px 6px; border-radius: 999px; font-weight: 600;">5</span>
+      </div>
+      <div class="nav on rise" style="animation-delay: .05s">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.2"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>
+        Mes patients
+      </div>
+      <div class="nav rise" style="animation-delay: .08s">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2.5"/><path d="M8 3v4M16 3v4M3 10h18"/></svg>
+        Rendez-vous
+      </div>
+      <div class="nav rise" style="animation-delay: .11s">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 13h6M9 17h4"/></svg>
+        Documents
+      </div>
+    </nav>
+    <div style="margin-top: auto; padding: 12px; border-top: 1px solid rgba(255,255,255,.07);">
+      <div style="display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 7px; background: #15191B; border: 1px solid rgba(255,255,255,.06);">
+        <div class="mono" style="width: 28px; height: 28px; border-radius: 7px; background: linear-gradient(135deg,#2FE0BE,#1B9C88); color: #062B25; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600;">MB</div>
+        <div style="min-width: 0; flex: 1;">
+          <div style="font-size: 12.5px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Dr. Meriem Belkaid</div>
+          <div style="font-size: 11px; color: #667276;">Nutritionniste</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <div style="flex: 1; min-width: 0; display: flex; flex-direction: column;">
+
+    <header style="height: 52px; flex-shrink: 0; display: flex; align-items: center; gap: 9px; padding: 0 20px; border-bottom: 1px solid rgba(255,255,255,.07); background: #0D1011;">
+      <span style="font-size: 12.5px; color: #667276; cursor: pointer;">Mes patients</span>
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#414A4E" stroke-width="1.8" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>
+      <span style="font-size: 14px; font-weight: 600; letter-spacing: -.01em;">Benali Yacine</span>
+      <div style="flex: 1;"></div>
+      <button class="btn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4l10-10a2.5 2.5 0 0 0-3.5-3.5L4 16.5z"/></svg>
+        Modifier
+      </button>
+      <button class="btn pri">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4l12 8-12 8z"/></svg>
+        Démarrer la consultation
+      </button>
+    </header>
+
+    <main style="flex: 1; min-height: 0; padding: 18px 20px; display: flex; gap: 16px;">
+
+      <div style="flex: 1.6; min-width: 0; display: flex; flex-direction: column; gap: 14px;">
+
+        <!-- Identité + mesures -->
+        <section class="rise" style="flex-shrink: 0; background: #15191B; border: 1px solid rgba(255,255,255,.07); border-radius: 9px; padding: 16px; animation-delay: .04s">
+          <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 14px;">
+            <div class="mono" style="width: 46px; height: 46px; border-radius: 11px; background: linear-gradient(135deg,#2FE0BE,#1B9C88); color: #062B25; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 600;">BY</div>
+            <div style="min-width: 0; flex: 1;">
+              <div style="font-size: 17px; font-weight: 600; letter-spacing: -.02em;">Benali Yacine</div>
+              <div style="display: flex; align-items: center; gap: 9px; margin-top: 4px;">
+                <span class="mono" style="font-size: 11.5px; color: #96A1A6;">34 ans</span>
+                <span style="color: #333B3E;">·</span>
+                <span class="mono" style="font-size: 11.5px; color: #96A1A6;">0661 24 18 07</span>
+                <span style="color: #333B3E;">·</span>
+                <span style="font-size: 11.5px; color: #96A1A6;">Suivi nutritionnel</span>
+              </div>
+            </div>
+            <div style="display: flex; gap: 6px;">
+              <span style="display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 999px; font-size: 11px; font-weight: 500; background: rgba(47,224,190,.13); color: #2FE0BE;">Forfait actif</span>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 9px;">
+            <div class="mesure">
+              <div class="lbl">Poids</div>
+              <div style="display: flex; align-items: baseline; gap: 4px; margin-top: 5px;">
+                <span class="mono" style="font-size: 17px; font-weight: 500;">84,2</span>
+                <span style="font-size: 11px; color: #667276;">kg</span>
+                <span class="mono" style="margin-left: auto; font-size: 11px; color: #2FE0BE;">−2,1</span>
+              </div>
+            </div>
+            <div class="mesure">
+              <div class="lbl">Taille</div>
+              <div style="display: flex; align-items: baseline; gap: 4px; margin-top: 5px;">
+                <span class="mono" style="font-size: 17px; font-weight: 500;">175</span>
+                <span style="font-size: 11px; color: #667276;">cm</span>
+              </div>
+            </div>
+            <div class="mesure">
+              <div class="lbl">IMC</div>
+              <div style="display: flex; align-items: baseline; gap: 4px; margin-top: 5px;">
+                <span class="mono" style="font-size: 17px; font-weight: 500; color: #F0A93B;">27,4</span>
+                <span style="font-size: 11px; color: #667276;">surpoids</span>
+              </div>
+            </div>
+            <div class="mesure">
+              <div class="lbl">Dernière visite</div>
+              <div style="margin-top: 5px;">
+                <span class="mono" style="font-size: 13px; font-weight: 500;">28 août</span>
+                <span class="mono" style="font-size: 11px; color: #667276;"> · il y a 16 jours</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Les visites -->
+        <section class="rise" style="flex: 1; min-height: 0; display: flex; flex-direction: column; animation-delay: .12s">
+          <div style="display: flex; align-items: center; margin-bottom: 11px;">
+            <span style="font-size: 13px; font-weight: 600;">Historique des visites</span>
+            <span class="mono" style="margin-left: 9px; font-size: 11px; color: #667276;">7 visites</span>
+            <div style="flex: 1;"></div>
+            <span class="lbl" style="cursor: pointer;">Tout déplier</span>
+          </div>
+
+          <div style="flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; overflow: hidden;">
+            <sc-for list="{{ visites }}" as="v" hint-placeholder-count="4">
+              <div class="visite rise {{ v.cls }}" style="animation-delay: {{ v.delay }};">
+                <div class="vtete" onClick="{{ v.basculer }}">
+                  <div class="mono" style="width: 34px; height: 34px; border-radius: 9px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; background: {{ v.numBg }}; color: {{ v.numInk }};">{{ v.num }}</div>
+                  <div style="min-width: 0; flex: 1;">
+                    <div style="font-size: 13px; font-weight: 500;">{{ v.titre }}</div>
+                    <div style="font-size: 11.5px; color: #96A1A6; margin-top: 2px;">{{ v.resume }}</div>
+                  </div>
+                  <span class="mono" style="font-size: 11.5px; color: #667276; flex-shrink: 0;">{{ v.date }}</span>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#667276" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; transform: rotate({{ v.rot }}deg); transition: transform .22s ease;"><path d="M6 9l6 6 6-6"/></svg>
+                </div>
+
+                <sc-if value="{{ v.ouvert }}" hint-placeholder-val="{{ true }}">
+                  <div class="deplier" style="padding: 0 14px 14px 61px; display: flex; flex-direction: column; gap: 6px;">
+                    <sc-for list="{{ v.docs }}" as="d" hint-placeholder-count="3">
+                      <div class="doc">
+                        <div style="width: 25px; height: 25px; border-radius: 6px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: {{ d.bg }};">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="{{ d.ink }}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/></svg>
+                        </div>
+                        <div style="min-width: 0; flex: 1;">
+                          <div style="font-size: 12.5px; font-weight: 500;">{{ d.type }}</div>
+                          <div style="font-size: 11px; color: #667276; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ d.extrait }}</div>
+                        </div>
+                        <span class="mono" style="font-size: 10.5px; color: #566165; flex-shrink: 0;">{{ d.ref }}</span>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#667276" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;"><path d="M6 9V3h12v6M6 18H4v-6h16v6h-2"/><rect x="8" y="15" width="8" height="6"/></svg>
+                      </div>
+                    </sc-for>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+        </section>
+      </div>
+
+      <!-- Forfait et règlement -->
+      <aside style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px;">
+
+        <section class="rise" style="background: #15191B; border: 1px solid rgba(255,255,255,.07); border-radius: 9px; padding: 16px; animation-delay: .2s">
+          <div class="lbl" style="margin-bottom: 11px;">Forfait</div>
+          <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 9px;">
+            <span class="mono" style="font-size: 21px; font-weight: 500;">7 <span style="color: #667276; font-size: 14px;">/ 10 séances</span></span>
+            <span class="mono" style="font-size: 12.5px; color: #2FE0BE;">70 %</span>
+          </div>
+          <div style="height: 6px; border-radius: 999px; background: rgba(255,255,255,.08); overflow: hidden;">
+            <div class="grow" style="height: 100%; width: 70%; background: linear-gradient(90deg,#1FA894,#2FE0BE); border-radius: 999px; animation-delay: .4s;"></div>
+          </div>
+          <div class="mono" style="font-size: 11px; color: #667276; margin-top: 8px;">3 séances restantes · 1 200 DA la séance</div>
+        </section>
+
+        <section class="rise" style="background: #15191B; border: 1px solid rgba(240,169,59,.22); border-radius: 9px; padding: 16px; animation-delay: .26s">
+          <div class="lbl" style="margin-bottom: 11px;">Règlement</div>
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: baseline;">
+              <span style="font-size: 12.5px; color: #96A1A6;">Total dû</span>
+              <span class="mono" style="font-size: 13px;">12 000 DA</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: baseline;">
+              <span style="font-size: 12.5px; color: #96A1A6;">Déjà versé</span>
+              <span class="mono" style="font-size: 13px; color: #2FE0BE;">8 400 DA</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: baseline; padding-top: 9px; border-top: 1px solid rgba(255,255,255,.07);">
+              <span style="font-size: 12.5px; font-weight: 500;">Reste à payer</span>
+              <span class="mono" style="font-size: 19px; font-weight: 600; color: #F0A93B;">3 600 DA</span>
+            </div>
+          </div>
+          <button class="btn" style="width: 100%; margin-top: 13px; border-color: rgba(240,169,59,.4); color: #F0A93B;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="6" width="19" height="12" rx="2.5"/><circle cx="12" cy="12" r="2.6"/></svg>
+            Encaisser un versement
+          </button>
+        </section>
+
+        <section class="rise" style="flex: 1; min-height: 0; background: #15191B; border: 1px solid rgba(255,255,255,.07); border-radius: 9px; display: flex; flex-direction: column; overflow: hidden; animation-delay: .32s">
+          <div style="padding: 15px 16px 11px;">
+            <div class="lbl">Derniers versements</div>
+          </div>
+          <div style="flex: 1; padding: 0 12px 12px; display: flex; flex-direction: column; gap: 4px; overflow: hidden;">
+            <sc-for list="{{ versements }}" as="r" hint-placeholder-count="4">
+              <div class="rise" style="display: flex; align-items: center; gap: 11px; padding: 9px 10px; border-radius: 7px; background: #1B2023; border: 1px solid rgba(255,255,255,.05); animation-delay: {{ r.delay }};">
+                <div style="width: 6px; height: 6px; border-radius: 999px; background: #2FE0BE; flex-shrink: 0;"></div>
+                <div style="min-width: 0; flex: 1;">
+                  <div class="mono" style="font-size: 12px;">{{ r.date }}</div>
+                  <div style="font-size: 10.5px; color: #667276;">{{ r.par }}</div>
+                </div>
+                <span class="mono" style="font-size: 13px; font-weight: 500; color: #2FE0BE; flex-shrink: 0;">{{ r.montant }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </section>
+      </aside>
+    </main>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    // La visite la plus récente est ouverte : c'est celle qu'on vient lire.
+    this.state = { ouverte: 0 };
+  }
+
+  renderVals() {
+    // Les couleurs disent le type de document, pas son importance.
+    const T = {
+      'Consultation':      { bg: 'rgba(47,224,190,.13)',  ink: '#2FE0BE' },
+      'Ordonnance':        { bg: 'rgba(155,140,250,.13)', ink: '#9B8CFA' },
+      'Demande de bilan':  { bg: 'rgba(240,169,59,.13)',  ink: '#F0A93B' },
+      'Dossier initial':   { bg: 'rgba(255,255,255,.07)', ink: '#96A1A6' },
+    };
+
+    const brutes = [
+      {
+        n: 7, date: '28 août 2026',
+        resume: 'Consultation · ordonnance',
+        docs: [
+          { type: 'Consultation', extrait: 'Poids 84,2 kg · IMC 27,4 · bonne observance', ref: 'S07' },
+          { type: 'Ordonnance',   extrait: 'Vitamine D3 — 1 000 UI · Magnésium', ref: 'ORD-0142' },
+        ],
+      },
+      {
+        n: 6, date: '14 août 2026',
+        resume: 'Consultation · demande de bilan',
+        docs: [
+          { type: 'Consultation',     extrait: 'Poids 86,3 kg · ajustement des portions du soir', ref: 'S06' },
+          { type: 'Demande de bilan', extrait: 'Bilan lipidique · glycémie à jeun', ref: 'BIL-0089' },
+        ],
+      },
+      {
+        n: 5, date: '31 juillet 2026',
+        resume: 'Consultation',
+        docs: [
+          { type: 'Consultation', extrait: "Poids 87,1 kg · reprise de l'activité physique", ref: 'S05' },
+        ],
+      },
+      {
+        n: 1, date: '12 mai 2026',
+        resume: 'Ouverture du dossier · consultation',
+        docs: [
+          { type: 'Dossier initial', extrait: "Dossier ouvert par l'assistante", ref: '—' },
+          { type: 'Consultation',    extrait: 'Poids 91,5 kg · IMC 29,9 · protocole 10 séances', ref: 'S01' },
+        ],
+      },
+    ];
+
+    const visites = brutes.map((v, i) => {
+      const ouvert = i === this.state.ouverte;
+      return {
+        // Le numéro vient de la donnée, pas du rang dans la liste :
+        // l'historique affiché saute des visites, et un calcul sur l'index
+        // aurait numéroté « Visite 1 » en quatrième.
+        titre: 'Visite ' + v.n,
+        date: v.date,
+        resume: v.resume,
+        num: String(v.n).padStart(2, '0'),
+        delay: (0.18 + i * 0.06).toFixed(3) + 's',
+        ouvert,
+        cls: ouvert ? 'on' : '',
+        rot: ouvert ? 180 : 0,
+        numBg: ouvert ? 'rgba(47,224,190,.14)' : '#242B2E',
+        numInk: ouvert ? '#2FE0BE' : '#96A1A6',
+        docs: v.docs.map((d) => ({
+          type: d.type,
+          extrait: d.extrait,
+          ref: d.ref,
+          bg: (T[d.type] || T['Dossier initial']).bg,
+          ink: (T[d.type] || T['Dossier initial']).ink,
+        })),
+        basculer: () => this.setState({ ouverte: ouvert ? -1 : i }),
+      };
+    });
+
+    const versements = [
+      { date: '28 août 2026',    par: 'Samia Aït Kaci', montant: '1 200 DA' },
+      { date: '14 août 2026',    par: 'Samia Aït Kaci', montant: '2 400 DA' },
+      { date: '31 juillet 2026', par: 'Samia Aït Kaci', montant: '2 400 DA' },
+      { date: '12 mai 2026',     par: 'Samia Aït Kaci', montant: '2 400 DA' },
+    ].map((r, i) => ({ ...r, delay: (0.38 + i * 0.055).toFixed(3) + 's' }));
+
+    return { visites, versements };
+  }
+}
+</script>
+</body>
+</html>

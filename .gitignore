@@ -64,3 +64,11 @@ backend/node_modules/
 backend/uploads/*
 migrate_working_dir/
 node_modules/
+
+# Binaires de l'installateur : regeneres depuis installer/ordimed.iss.
+# 64 Mo par version, ils alourdiraient l'historique git pour toujours.
+installer/*.exe
+
+# Reglages locaux de Claude Code, propres a chaque poste.
+.claude/settings.local.json
+.claude/scheduled_tasks.lock

@@ -1,19 +1,16 @@
 import '../ui/app_theme.dart';
 import 'dart:async';
-import 'dart:io';
-import 'dart:typed_data';
-import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:pdf/pdf.dart';
-import 'package:pdf/widgets.dart' as pw;
-import 'package:printing/printing.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/api_service.dart';
 import '../services/firestore_service.dart';
 import '../ui/fluent_button.dart';
 import 'consultation_page.dart';
+import 'ordonnance_page.dart';
+import 'bilan_page.dart';
 import '../core/coerce.dart';
+import '../core/doctor_form_prototype.dart';
 import '../core/versements.dart';
 import '../core/visite.dart';
 import '../ui/info_display.dart';
@@ -24,6 +21,8 @@ import '../core/validate.dart' as v;
 import '../ui/app_field.dart';
 import '../widgets/computed_fields.dart';
 import '../widgets/historique_seances.dart';
+import '../widgets/patient_status_bar.dart';
+// import '../widgets/patient_documents_card.dart'; // onglet Pieces jointes desactive
 
 /// Rend le contenu d'un dialogue defilable et borne sa hauteur.
 ///
@@ -37,7 +36,6 @@ Widget _scrollableDialogContent(BuildContext context, Widget child) {
   );
 }
 
-
 class PatientDetailsPage extends StatelessWidget {
   final String patientId;
   final String patientName;
@@ -46,7 +44,7 @@ class PatientDetailsPage extends StatelessWidget {
   final bool canAddForm;
   final bool canAddDoctorForm;
 
-  const PatientDetailsPage({
+  PatientDetailsPage({
     Key? key,
     required this.patientId,
     required this.patientName,
@@ -56,66 +54,110 @@ class PatientDetailsPage extends StatelessWidget {
     this.canAddDoctorForm = false,
   }) : super(key: key);
 
+  final ValueNotifier<int> _tabIndex = ValueNotifier<int>(0);
+
+  /// Ouvre la page de rédaction d'ordonnance (appelée depuis le dossier
+  /// patient ou depuis la consultation en cours).
+  static Future<void> ouvrirOrdonnance(
+    BuildContext context, {
+    required String ownerProfileId,
+    required String patientId,
+    required Map<String, dynamic> patientData,
+  }) {
+    return Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => OrdonnancePage(
+          ownerProfileId: ownerProfileId,
+          patientId: patientId,
+          patientData: patientData,
+        ),
+      ),
+    );
+  }
+
+  /// Ouvre la page de rédaction de demande de bilan (appelée depuis le
+  /// dossier patient ou depuis la consultation en cours).
+  static Future<void> ouvrirBilan(
+    BuildContext context, {
+    required String ownerProfileId,
+    required String patientId,
+    required Map<String, dynamic> patientData,
+  }) {
+    return Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => BilanPage(
+          ownerProfileId: ownerProfileId,
+          patientId: patientId,
+          patientData: patientData,
+        ),
+      ),
+    );
+  }
+
+  /// Ouvre le dialogue de formulaire médecin sans naviguer vers le dossier
+  /// patient (appelé depuis la consultation en cours).
+  static Future<void> ouvrirFormulaireMedecin(
+    BuildContext context, {
+    required String parentUid,
+    required String ownerProfileId,
+    required String patientId,
+    required Map<String, dynamic> patientData,
+  }) {
+    final page = PatientDetailsPage(
+      patientId: patientId,
+      patientName: '',
+      parentUid: parentUid,
+      ownerProfileId: ownerProfileId,
+    );
+    return page._addDoctorForm(context, patientData: patientData);
+  }
+
+  static const _tabs = <_DossierTab>[
+    _DossierTab(Icons.dashboard_outlined, 'Resume'),
+    _DossierTab(Icons.history, 'Consultations'),
+    _DossierTab(Icons.receipt_long, 'Ordonnances'),
+    _DossierTab(Icons.science_outlined, 'Bilans'),
+    _DossierTab(Icons.payment, 'Paiements'),
+    _DossierTab(Icons.info_outline, 'Infos'),
+    // Pieces jointes (Firebase Storage) : desactive en attendant le
+    // deploiement de storage.rules — voir _buildTabContent case 6, laisse
+    // en commentaire plutot que supprime pour reactiver en un coup.
+    // _DossierTab(Icons.attach_file, 'Pieces jointes'),
+  ];
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final pageGradient = LinearGradient(
-      begin: Alignment.topCenter,
-      end: Alignment.bottomCenter,
-      colors: [
-        scheme.surface,
-        scheme.surfaceVariant.withOpacity(isDark ? 0.22 : 0.6),
-      ],
-    );
-    Color tone(Color color, double amount) {
-      final hsl = HSLColor.fromColor(color);
-      final l = (hsl.lightness + amount).clamp(0.0, 1.0);
-      return hsl.withLightness(l).toColor();
-    }
-
-    final appBarStart = tone(scheme.primary, isDark ? -0.12 : -0.06);
-    final appBarMid = tone(scheme.primary, isDark ? -0.02 : 0.06);
-    final appBarEnd = tone(scheme.primary, isDark ? 0.06 : 0.16);
-    final appBarAccent = Color.lerp(
-      appBarEnd,
-      scheme.secondary,
-      isDark ? 0.12 : 0.2,
-    )!;
-    final appBarGradient = LinearGradient(
-      begin: Alignment.centerLeft,
-      end: Alignment.centerRight,
-      colors: [appBarStart, appBarMid, appBarAccent],
-    );
-    final appBarBorder = Colors.white.withOpacity(isDark ? 0.1 : 0.18);
+    final ink1 = AppTheme.ink1(context);
+    final ink2 = AppTheme.ink2(context);
 
     return Scaffold(
-      backgroundColor: scheme.surface,
+      backgroundColor: AppTheme.pageBg(context),
       appBar: AppBar(
-        toolbarHeight: 84,
+        toolbarHeight: 60,
         elevation: 0,
-        backgroundColor: Colors.transparent,
+        backgroundColor: AppTheme.panel(context),
         titleSpacing: 0,
-        leadingWidth: 56,
+        leadingWidth: 52,
         leading: Padding(
-          padding: const EdgeInsets.only(left: 12),
+          padding: const EdgeInsets.only(left: 10),
           child: InkWell(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(AppTheme.rButton),
             onTap: () {
               if (Navigator.canPop(context)) Navigator.pop(context);
             },
-            child: Ink(
-              width: 42,
-              height: 42,
+            child: Container(
+              width: 36,
+              height: 36,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(isDark ? 0.14 : 0.2),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: Colors.white.withOpacity(isDark ? 0.18 : 0.35),
-                ),
+                color: AppTheme.raised(context),
+                borderRadius: BorderRadius.circular(AppTheme.rButton),
+                border: Border.all(color: scheme.outline),
               ),
-              child: const Center(
-                child: Icon(Icons.arrow_back, color: Colors.white),
+              child: Center(
+                child: Icon(Icons.arrow_back, color: ink2, size: 18),
               ),
             ),
           ),
@@ -126,8 +168,8 @@ class PatientDetailsPage extends StatelessWidget {
             Text(
               'Dossier patient',
               style: TextStyle(
-                color: Colors.white.withOpacity(0.85),
-                fontSize: 12,
+                color: ink2,
+                fontSize: 11,
                 fontWeight: FontWeight.w600,
                 letterSpacing: 0.3,
               ),
@@ -135,59 +177,17 @@ class PatientDetailsPage extends StatelessWidget {
             const SizedBox(height: 2),
             Text(
               patientName,
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: ink1,
                 fontWeight: FontWeight.w700,
-                fontSize: 20,
+                fontSize: 17,
               ),
             ),
           ],
         ),
-        flexibleSpace: Container(
-          margin: const EdgeInsets.fromLTRB(12, 8, 12, 6),
-          decoration: BoxDecoration(
-            gradient: appBarGradient,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: appBarBorder),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(isDark ? 0.4 : 0.2),
-                blurRadius: 20,
-                offset: const Offset(0, 10),
-              ),
-            ],
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(20),
-            child: Stack(
-              children: [
-                Positioned(
-                  right: -40,
-                  top: -30,
-                  child: Container(
-                    width: 140,
-                    height: 140,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white.withOpacity(isDark ? 0.08 : 0.18),
-                    ),
-                  ),
-                ),
-                Positioned(
-                  left: -30,
-                  bottom: -40,
-                  child: Container(
-                    width: 120,
-                    height: 120,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white.withOpacity(isDark ? 0.06 : 0.14),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Divider(height: 1, color: scheme.outline),
         ),
       ),
       body: StreamBuilder<Map<String, dynamic>?>(
@@ -237,419 +237,743 @@ class PatientDetailsPage extends StatelessWidget {
           final seancesTotal = _parseInt(patientData['nombreSeances']);
           final seancesDone = _parseInt(patientData['seancesEffectuees']);
 
-          return Container(
-            decoration: BoxDecoration(gradient: pageGradient),
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.only(bottom: 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(height: 12),
-                  _PatientHeader(
-                    name: patientData['nom'] ?? patientName,
-                    prenom: patientData['prenom'] ?? '',
-                    tel: patientData['tel'] ?? '',
-                    email: patientData['email'] ?? '',
-                    motif: patientData['motif'] ?? '',
-                    origine: patientData['origine'] ?? '',
-                    age: patientData['age']?.toString() ?? '',
-                    medecin: doctorLabel,
-                    assistant: assistantLabel,
-                    prix: prix,
-                    versementsTotal: totalVersements,
-                    seancesTotal: seancesTotal,
-                    seancesDone: seancesDone,
-                    createdAt: patientData['createdAt'],
-                  ),
-                  // La salle d'attente n'est pas le seul chemin vers une
-                  // consultation, et c'est un chemin que le medecin ne
-                  // controle pas : il depend de l'assistant. Depuis le
-                  // dossier, il lance le parcours guide lui-meme.
-                  if (canAddDoctorForm) ...[
-                    const SizedBox(height: 12),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: SizedBox(
-                        width: double.infinity,
-                        child: FluentButton(
-                          label: 'Demarrer la consultation guidee',
-                          icon: Icons.play_circle_outline,
-                          onPressed: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => ConsultationPage.depuisDossier(
-                                parentUid: parentUid,
-                                profileId: ownerProfileId,
-                                patientId: patientId,
-                                patient: patientData,
-                              ),
+          return Column(
+            children: [
+              PatientStatusBar(patientId: patientId),
+              Expanded(
+                child: Row(
+                  children: [
+                    _buildSidebar(context, scheme),
+                    VerticalDivider(width: 1, color: scheme.outline),
+                    Expanded(
+                      child: ValueListenableBuilder<int>(
+                        valueListenable: _tabIndex,
+                        builder: (context, currentTabIndex, _) {
+                          return _buildTabContent(
+                            context: context,
+                            scheme: scheme,
+                            tabIndex: currentTabIndex,
+                            patientData: patientData,
+                            doctorId: doctorId,
+                            assistantId: assistantId,
+                            doctorLabel: doctorLabel,
+                            assistantLabel: assistantLabel,
+                            ownerLabel: ownerLabel,
+                            prix: prix,
+                            totalVersements: totalVersements,
+                            seancesTotal: seancesTotal,
+                            seancesDone: seancesDone,
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildSidebar(BuildContext context, ColorScheme scheme) {
+    final ink1 = AppTheme.ink1(context);
+    final ink2 = AppTheme.ink2(context);
+    final menthe = AppTheme.menthe(context);
+
+    return SizedBox(
+      width: 200,
+      child: Column(
+        children: [
+          if (canAddDoctorForm) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+              child: SizedBox(
+                width: double.infinity,
+                child: FluentButton(
+                  label: 'Consultation',
+                  icon: Icons.play_circle_outline,
+                  onPressed: () {
+                    final stream = FirestoreService().patientDoc(
+                      parentUid: parentUid,
+                      profileId: ownerProfileId,
+                      patientId: patientId,
+                    );
+                    stream.first.then((data) {
+                      if (!context.mounted) return;
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ConsultationPage.depuisDossier(
+                            parentUid: parentUid,
+                            profileId: ownerProfileId,
+                            patientId: patientId,
+                            patient: data ?? {},
+                          ),
+                        ),
+                      );
+                    });
+                  },
+                ),
+              ),
+            ),
+            Divider(height: 1, color: scheme.outline),
+          ],
+          Expanded(
+            child: ValueListenableBuilder<int>(
+              valueListenable: _tabIndex,
+              builder: (context, currentTabIndex, _) {
+                return ListView.builder(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  itemCount: _tabs.length,
+                  itemBuilder: (context, i) {
+                    final tab = _tabs[i];
+                    final selected = i == currentTabIndex;
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
+                      child: Material(
+                        color: selected
+                            ? menthe.withOpacity(0.15)
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(AppTheme.rButton),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(AppTheme.rButton),
+                          onTap: () => _tabIndex.value = i,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  tab.icon,
+                                  size: 20,
+                                  color: selected ? menthe : ink2,
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    tab.label,
+                                    style: TextStyle(
+                                      color: selected ? ink1 : ink2,
+                                      fontWeight: selected
+                                          ? FontWeight.w700
+                                          : FontWeight.w500,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ),
                       ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTabContent({
+    required BuildContext context,
+    required ColorScheme scheme,
+    required int tabIndex,
+    required Map<String, dynamic> patientData,
+    required String doctorId,
+    required String assistantId,
+    required String doctorLabel,
+    required String assistantLabel,
+    required String ownerLabel,
+    required double? prix,
+    required double? totalVersements,
+    required int? seancesTotal,
+    required int? seancesDone,
+  }) {
+    switch (tabIndex) {
+      case 0:
+        return _buildResumeTab(
+          context: context,
+          scheme: scheme,
+          patientData: patientData,
+          doctorLabel: doctorLabel,
+          assistantLabel: assistantLabel,
+          prix: prix,
+          totalVersements: totalVersements,
+          seancesTotal: seancesTotal,
+          seancesDone: seancesDone,
+        );
+      case 1:
+        return _buildConsultationsTab();
+      case 2:
+        return _buildDocumentsTab(
+          context: context,
+          scheme: scheme,
+          patientData: patientData,
+          filterType: 'ordonnance',
+          doctorId: doctorId,
+          assistantId: assistantId,
+          doctorLabel: doctorLabel,
+          assistantLabel: assistantLabel,
+          ownerLabel: ownerLabel,
+        );
+      case 3:
+        return _buildDocumentsTab(
+          context: context,
+          scheme: scheme,
+          patientData: patientData,
+          filterType: 'bilan',
+          doctorId: doctorId,
+          assistantId: assistantId,
+          doctorLabel: doctorLabel,
+          assistantLabel: assistantLabel,
+          ownerLabel: ownerLabel,
+        );
+      case 4:
+        return _buildPaiementsTab(
+          context: context,
+          scheme: scheme,
+          patientData: patientData,
+          doctorId: doctorId,
+          assistantId: assistantId,
+          doctorLabel: doctorLabel,
+          assistantLabel: assistantLabel,
+          ownerLabel: ownerLabel,
+          totalVersements: totalVersements,
+        );
+      case 5:
+        return _buildInfosTab(
+          context: context,
+          scheme: scheme,
+          patientData: patientData,
+          doctorId: doctorId,
+          assistantId: assistantId,
+          doctorLabel: doctorLabel,
+          assistantLabel: assistantLabel,
+          ownerLabel: ownerLabel,
+        );
+      // case 6 (Pieces jointes) desactive avec l'onglet ci-dessus.
+      default:
+        return const SizedBox.shrink();
+    }
+  }
+
+  Widget _buildResumeTab({
+    required BuildContext context,
+    required ColorScheme scheme,
+    required Map<String, dynamic> patientData,
+    required String doctorLabel,
+    required String assistantLabel,
+    required double? prix,
+    required double? totalVersements,
+    required int? seancesTotal,
+    required int? seancesDone,
+  }) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.only(bottom: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 12),
+          _PatientHeader(
+            name: patientData['nom'] ?? patientName,
+            prenom: patientData['prenom'] ?? '',
+            tel: patientData['tel'] ?? '',
+            email: patientData['email'] ?? '',
+            motif: patientData['motif'] ?? '',
+            origine: patientData['origine'] ?? '',
+            age: patientData['age']?.toString() ?? '',
+            medecin: doctorLabel,
+            assistant: assistantLabel,
+            prix: prix,
+            versementsTotal: totalVersements,
+            seancesTotal: seancesTotal,
+            seancesDone: seancesDone,
+            createdAt: patientData['createdAt'],
+          ),
+          const SizedBox(height: 12),
+          _InfosMedicalesCard(
+            sexe: (patientData['sexe'] ?? '').toString(),
+            groupeSanguin: (patientData['groupeSanguin'] ?? '').toString(),
+            adresse: (patientData['adresse'] ?? '').toString(),
+            allergies: (patientData['allergies'] ?? '').toString(),
+            contactUrgenceNom: (patientData['contactUrgenceNom'] ?? '')
+                .toString(),
+            contactUrgenceTel: (patientData['contactUrgenceTel'] ?? '')
+                .toString(),
+            onModifier: () => _openInfosMedicalesDialog(context, patientData),
+          ),
+          const SizedBox(height: 12),
+          StreamBuilder<List<Map<String, dynamic>>>(
+            stream: FirestoreService().patientForms(
+              parentUid: parentUid,
+              profileId: ownerProfileId,
+              patientId: patientId,
+            ),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) {
+                return const Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Center(child: CircularProgressIndicator()),
+                );
+              }
+              final merged = snapshot.data!;
+
+              Map<String, dynamic>? latestMedSections;
+              for (final data in merged.reversed) {
+                final type = (data['type'] ?? '').toString().toLowerCase();
+                if (type.contains('medecin')) {
+                  final sec = (data['sections'] as Map?)
+                      ?.cast<String, dynamic>();
+                  if (sec != null && sec.isNotEmpty) {
+                    latestMedSections = sec;
+                    break;
+                  }
+                }
+              }
+
+              String fromSections(List<String> keys) {
+                if (latestMedSections == null) return '';
+                for (final k in keys) {
+                  final v =
+                      latestMedSections![k] ??
+                      latestMedSections![k.toLowerCase()];
+                  if (v != null && v.toString().trim().isNotEmpty) {
+                    return v.toString();
+                  }
+                }
+                return '';
+              }
+
+              String metricPoids =
+                  fromSections(['poids_actuel', 'poids', 'Poids']).isNotEmpty
+                  ? fromSections(['poids_actuel', 'poids', 'Poids'])
+                  : (patientData['poids']?.toString() ?? '-');
+              String metricTaille =
+                  fromSections(['taille', 'Taille']).isNotEmpty
+                  ? fromSections(['taille', 'Taille'])
+                  : (patientData['taille']?.toString() ?? '-');
+              String metricImc = fromSections(['imc', 'IMC']).isNotEmpty
+                  ? fromSections(['imc', 'IMC'])
+                  : (patientData['imc']?.toString() ?? '-');
+
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: [
+                        _MetricCard(
+                          label: 'Poids',
+                          value: metricPoids,
+                          suffix: 'kg',
+                        ),
+                        _MetricCard(
+                          label: 'Taille',
+                          value: metricTaille,
+                          suffix: 'cm',
+                        ),
+                        _MetricCard(label: 'IMC', value: metricImc),
+                        _MetricCard(
+                          label: 'Motif',
+                          value: fmt.capitalize(
+                            fmt.humanize(patientData['motif']),
+                          ),
+                          fallback: 'Non renseigne',
+                        ),
+                        _MetricCard(
+                          label: 'Origine',
+                          value: fmt.capitalize(
+                            fmt.humanize(patientData['origine']),
+                          ),
+                          fallback: 'Non renseignee',
+                        ),
+                      ],
                     ),
-                  ],
-                  const SizedBox(height: 12),
-                  // Les documents ci-dessous melangent ordonnances, bilans et
-                  // consultations. L'historique isole le fil des seances, qui
-                  // est ce qu'on relit avant de recevoir un patient.
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: CarteHistoriqueSeances(
-                      parentUid: parentUid,
-                      profileId: ownerProfileId,
-                      patientId: patientId,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  StreamBuilder<List<Map<String, dynamic>>>(
-                    stream: FirestoreService().patientForms(
-                      parentUid: parentUid,
-                      profileId: ownerProfileId,
-                      patientId: patientId,
-                    ),
-                    builder: (context, snapshot) {
-                      // Ce bloc fusionnait trois sources : les documents du
-                      // profil courant, ceux de la copie assistant, et une
-                      // requete collectionGroup pour rattraper le reste.
-                      // Firestore ecrivait chaque formulaire sous chaque
-                      // profil, et il fallait recoller les morceaux en
-                      // dedoublonnant sur le chemin du document.
-                      //
-                      // Il n'y a plus qu'un document par formulaire : la
-                      // fusion n'a plus d'objet.
-                      if (!snapshot.hasData) {
-                        return const Padding(
-                          padding: EdgeInsets.all(24),
-                          child: Center(child: CircularProgressIndicator()),
+                    const SizedBox(height: 12),
+                    LayoutBuilder(
+                      builder: (context, c) {
+                        final reglement = ReglementSummary(
+                          reglement: Reglement.fromPatient(patientData),
                         );
-                      }
-
-                      final merged = snapshot.data!;
-
-                          if (merged.isEmpty) {
-                            return const Padding(
-                              padding: EdgeInsets.all(24),
-                              child: Center(child: Text('Aucun formulaire')),
-                            );
-                          }
-
-                          Map<String, dynamic>? latestMedSections;
-                          for (final data in merged.reversed) {
-                            final type = (data['type'] ?? '')
-                                .toString()
-                                .toLowerCase();
-                            if (type.contains('medecin')) {
-                              final sec = (data['sections'] as Map?)
-                                  ?.cast<String, dynamic>();
-                              if (sec != null && sec.isNotEmpty) {
-                                latestMedSections = sec;
-                                break;
-                              }
-                            }
-                          }
-
-                          String _fromSections(List<String> keys) {
-                            if (latestMedSections == null) return '';
-                            for (final k in keys) {
-                              final v =
-                                  latestMedSections![k] ??
-                                  latestMedSections![k.toLowerCase()];
-                              if (v != null && v.toString().trim().isNotEmpty) {
-                                return v.toString();
-                              }
-                            }
-                            return '';
-                          }
-
-                          String metricPoids =
-                              _fromSections([
-                                'poids_actuel',
-                                'poids',
-                                'Poids',
-                              ]).isNotEmpty
-                              ? _fromSections([
-                                  'poids_actuel',
-                                  'poids',
-                                  'Poids',
-                                ])
-                              : (patientData['poids']?.toString() ?? '-');
-                          String metricTaille =
-                              _fromSections(['taille', 'Taille']).isNotEmpty
-                              ? _fromSections(['taille', 'Taille'])
-                              : (patientData['taille']?.toString() ?? '-');
-                          String metricImc =
-                              _fromSections(['imc', 'IMC']).isNotEmpty
-                              ? _fromSections(['imc', 'IMC'])
-                              : (patientData['imc']?.toString() ?? '-');
-
-                          final titleStyle = TextStyle(
-                            fontWeight: FontWeight.w800,
-                            fontSize: 18,
-                            color: scheme.onSurface,
-                          );
-                          final contentStyle = TextStyle(
-                            fontSize: 15,
-                            height: 1.35,
-                            color: scheme.onSurface,
-                          );
-
+                        final seances = SeancesSummary(
+                          seances: Seances.fromPatient(patientData),
+                        );
+                        if (c.maxWidth < 560) {
                           return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                ),
-                                child: Wrap(
-                                  spacing: 12,
-                                  runSpacing: 12,
-                                  children: [
-                                    _MetricCard(
-                                      label: 'Poids',
-                                      value: metricPoids,
-                                      suffix: 'kg',
-                                    ),
-                                    _MetricCard(
-                                      label: 'Taille',
-                                      value: metricTaille,
-                                      suffix: 'cm',
-                                    ),
-                                    _MetricCard(label: 'IMC', value: metricImc),
-                                    // Les motifs et origines sont stockés en
-                                    // clé technique. Sans espaces, Flutter
-                                    // coupait « famille_amis_bouche_a_oreille »
-                                    // en plein milieu d'un mot.
-                                    _MetricCard(
-                                      label: 'Motif',
-                                      value: fmt.capitalize(
-                                        fmt.humanize(patientData['motif']),
-                                      ),
-                                      fallback: 'Non renseigné',
-                                    ),
-                                    _MetricCard(
-                                      label: 'Origine',
-                                      value: fmt.capitalize(
-                                        fmt.humanize(patientData['origine']),
-                                      ),
-                                      fallback: 'Non renseignée',
-                                    ),
-                                  ],
-                                ),
-                              ),
+                              reglement,
                               const SizedBox(height: 12),
-                              // Valeurs déduites : ni l'une ni l'autre n'est
-                              // saisie, toutes deux se recalculent à chaque
-                              // versement et à chaque séance clôturée.
-                              Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                ),
-                                child: LayoutBuilder(
-                                  builder: (context, c) {
-                                    final reglement = ReglementSummary(
-                                      reglement: Reglement.fromPatient(
-                                        patientData,
-                                      ),
-                                    );
-                                    final seances = SeancesSummary(
-                                      seances: Seances.fromPatient(patientData),
-                                    );
-                                    if (c.maxWidth < 560) {
-                                      return Column(
-                                        children: [
-                                          reglement,
-                                          const SizedBox(height: 12),
-                                          seances,
-                                        ],
-                                      );
-                                    }
-                                    return Row(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Expanded(child: reglement),
-                                        const SizedBox(width: 12),
-                                        Expanded(child: seances),
-                                      ],
-                                    );
-                                  },
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                ),
-                                // Le tableau du document ne garde plus que
-                                // les versements recents : la sous-collection
-                                // porte l'historique complet. Sans cette
-                                // lecture, les anciens disparaitraient de
-                                // l'ecran alors qu'ils existent toujours.
-                                child: StreamBuilder<Map<String, dynamic>>(
-                                  stream: ApiService.instance.dossierFlux(
-                                    patientId,
-                                  ),
-                                  builder: (context, versSnap) {
-                                    final sous =
-                                        ((versSnap.data?['versements']
-                                                    as List?) ??
-                                                const [])
-                                        .map(
-                                          (d) => Versement.fromMap(
-                                            Map<String, dynamic>.from(d as Map),
-                                            id: (d['id'] ?? '').toString(),
-                                          ),
-                                        )
-                                        .toList();
-                                    final tous = fusionnerVersements(
-                                      sousCollection: sous,
-                                      tableauHerite:
-                                          patientData['versements'],
-                                    );
-                                    return _buildVersementsCard(
-                                  context: context,
-                                  versements: tous
-                                      .map(
-                                        (v) => <String, dynamic>{
-                                          'montant': v.montant,
-                                          if (v.date != null)
-                                            'createdAt': v.date,
-                                          'auteurProfileId':
-                                              v.auteurProfileId,
-                                        },
-                                      )
-                                      .toList(),
-                                  totalVersements: totalVersements ?? 0,
-                                  ownerProfileId: ownerProfileId,
-                                  doctorId: doctorId,
-                                  assistantId: assistantId,
-                                  doctorLabel: doctorLabel,
-                                  assistantLabel: assistantLabel,
-                                  ownerLabel: ownerLabel,
-                                );
-                                  },
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                ),
-                                child: Wrap(
-                                  spacing: 8,
-                                  runSpacing: 8,
-                                  children: [
-                                    _pillAction(
-                                      context,
-                                      Icons.receipt_long,
-                                      'Ordonnance',
-                                      onPressed: () => _openOrdonnanceDialog(
-                                        context,
-                                        patientData,
-                                      ),
-                                    ),
-                                    _pillAction(
-                                      context,
-                                      Icons.article_outlined,
-                                      'Bilan',
-                                      onPressed: () => _openBilanDialog(
-                                        context,
-                                        patientData,
-                                      ),
-                                    ),
-                                    _pillAction(
-                                      context,
-                                      Icons.payment,
-                                      'Reglement',
-                                      onPressed: () => _openReglementDialog(
-                                        context,
-                                        patientData,
-                                      ),
-                                    ),
-                                    _pillAction(
-                                      context,
-                                      Icons.local_hospital,
-                                      'Seance',
-                                      onPressed: () => _openSeanceDialog(
-                                        context,
-                                        patientData,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(height: 16),
-                              Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                ),
-                                child: _renderFormGroups(
-                                  merged,
-                                  titleStyle,
-                                  contentStyle,
-                                  patientData,
-                                  context: context,
-                                  ownerProfileId: ownerProfileId,
-                                  doctorId: doctorId,
-                                  assistantId: assistantId,
-                                  doctorLabel: doctorLabel,
-                                  assistantLabel: assistantLabel,
-                                  ownerLabel: ownerLabel,
-                                  onEdit: (doc, data) => _openEditFormDialog(
-                                    context,
-                                    doc,
-                                    data,
-                                    patientData,
-                                  ),
-                                ),
-                              ),
+                              seances,
                             ],
                           );
+                        }
+                        return Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(child: reglement),
+                            const SizedBox(width: 12),
+                            Expanded(child: seances),
+                          ],
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildConsultationsTab() {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: CarteHistoriqueSeances(
+        parentUid: parentUid,
+        profileId: ownerProfileId,
+        patientId: patientId,
+        compact: false,
+      ),
+    );
+  }
+
+  Widget _buildDocumentsTab({
+    required BuildContext context,
+    required ColorScheme scheme,
+    required Map<String, dynamic> patientData,
+    required String filterType,
+    required String doctorId,
+    required String assistantId,
+    required String doctorLabel,
+    required String assistantLabel,
+    required String ownerLabel,
+  }) {
+    final titleStyle = TextStyle(
+      fontWeight: FontWeight.w800,
+      fontSize: 18,
+      color: scheme.onSurface,
+    );
+    final contentStyle = TextStyle(
+      fontSize: 15,
+      height: 1.35,
+      color: scheme.onSurface,
+    );
+
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      stream: FirestoreService().patientForms(
+        parentUid: parentUid,
+        profileId: ownerProfileId,
+        patientId: patientId,
+      ),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final all = snapshot.data!;
+        final filtered = all.where((doc) {
+          final type = (doc['type'] ?? '').toString().toLowerCase();
+          return type.contains(filterType);
+        }).toList();
+
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      filterType == 'ordonnance' ? 'Ordonnances' : 'Bilans',
+                      style: titleStyle,
+                    ),
+                  ),
+                  FluentButton(
+                    label: filterType == 'ordonnance'
+                        ? 'Nouvelle ordonnance'
+                        : 'Nouveau bilan',
+                    icon: Icons.add,
+                    onPressed: () {
+                      if (filterType == 'ordonnance') {
+                        PatientDetailsPage.ouvrirOrdonnance(
+                          context,
+                          ownerProfileId: ownerProfileId,
+                          patientId: patientId,
+                          patientData: patientData,
+                        );
+                      } else {
+                        PatientDetailsPage.ouvrirBilan(
+                          context,
+                          ownerProfileId: ownerProfileId,
+                          patientId: patientId,
+                          patientData: patientData,
+                        );
+                      }
                     },
                   ),
                 ],
               ),
-            ),
-          );
-        },
-      ),
-      floatingActionButton: (canAddForm || canAddDoctorForm)
-          ? Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (canAddDoctorForm) ...[
-                  FloatingActionButton.extended(
-                    heroTag: 'doctor_form',
-                    icon: const Icon(Icons.medical_services_outlined),
-                    label: const Text('Formulaire medecin'),
-                    onPressed: () => _addDoctorForm(context),
+              const SizedBox(height: 16),
+              if (filtered.isEmpty)
+                Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(32),
+                    child: Text(
+                      filterType == 'ordonnance'
+                          ? 'Aucune ordonnance'
+                          : 'Aucun bilan',
+                      style: TextStyle(color: AppTheme.ink2(context)),
+                    ),
                   ),
-                  const SizedBox(height: 12),
+                )
+              else
+                _renderFormGroups(
+                  filtered,
+                  titleStyle,
+                  contentStyle,
+                  patientData,
+                  context: context,
+                  ownerProfileId: ownerProfileId,
+                  doctorId: doctorId,
+                  assistantId: assistantId,
+                  doctorLabel: doctorLabel,
+                  assistantLabel: assistantLabel,
+                  ownerLabel: ownerLabel,
+                  onEdit: (doc, data) =>
+                      _openEditFormDialog(context, doc, data, patientData),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildPaiementsTab({
+    required BuildContext context,
+    required ColorScheme scheme,
+    required Map<String, dynamic> patientData,
+    required String doctorId,
+    required String assistantId,
+    required String doctorLabel,
+    required String assistantLabel,
+    required String ownerLabel,
+    required double? totalVersements,
+  }) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          LayoutBuilder(
+            builder: (context, c) {
+              final reglement = ReglementSummary(
+                reglement: Reglement.fromPatient(patientData),
+              );
+              final seances = SeancesSummary(
+                seances: Seances.fromPatient(patientData),
+              );
+              if (c.maxWidth < 560) {
+                return Column(
+                  children: [reglement, const SizedBox(height: 12), seances],
+                );
+              }
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: reglement),
+                  const SizedBox(width: 12),
+                  Expanded(child: seances),
                 ],
-                if (canAddForm)
-                  FloatingActionButton.extended(
-                    heroTag: 'assistant_form',
-                    icon: const Icon(Icons.note_add),
-                    label: const Text('Ajouter un formulaire'),
-                    onPressed: () => _addForm(context),
-                  ),
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+          // Un flux dédié aux versements de ce patient, pas `dossierFlux` :
+          // celui-ci ouvre en plus un listener sur les formulaires du
+          // patient, jamais lus ici.
+          StreamBuilder<List<Map<String, dynamic>>>(
+            stream: ApiService.instance.versementsFlux(patientId: patientId),
+            builder: (context, versSnap) {
+              final sous = (versSnap.data ?? const [])
+                  .map(
+                    (d) => Versement.fromMap(
+                      Map<String, dynamic>.from(d),
+                      id: (d['id'] ?? '').toString(),
+                    ),
+                  )
+                  .toList();
+              final tous = fusionnerVersements(
+                sousCollection: sous,
+                tableauHerite: patientData['versements'],
+              );
+              return _buildVersementsCard(
+                context: context,
+                versements: tous
+                    .map(
+                      (v) => <String, dynamic>{
+                        'montant': v.montant,
+                        if (v.date != null) 'createdAt': v.date,
+                        'auteurProfileId': v.auteurProfileId,
+                      },
+                    )
+                    .toList(),
+                totalVersements: totalVersements ?? 0,
+                ownerProfileId: ownerProfileId,
+                doctorId: doctorId,
+                assistantId: assistantId,
+                doctorLabel: doctorLabel,
+                assistantLabel: assistantLabel,
+                ownerLabel: ownerLabel,
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              // Le prix est un geste du medecin, pris au moment ou il
+              // cloture sa consultation (etape "Cloture" de
+              // ConsultationPage) — l'assistant encaisse le montant ainsi
+              // fixe, il ne le decide pas. Ce bouton (qui permettait de
+              // fixer le prix a la main) reste reserve au medecin/principal
+              // comme outil de correction ; a l'assistant, seul le resume
+              // en lecture seule ci-dessus reste visible.
+              if (canAddDoctorForm)
+                _pillAction(
+                  context,
+                  Icons.payment,
+                  'Reglement',
+                  onPressed: () => _openReglementDialog(context, patientData),
+                ),
+              _pillAction(
+                context,
+                Icons.local_hospital,
+                'Seance',
+                onPressed: () => _openSeanceDialog(context, patientData),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfosTab({
+    required BuildContext context,
+    required ColorScheme scheme,
+    required Map<String, dynamic> patientData,
+    required String doctorId,
+    required String assistantId,
+    required String doctorLabel,
+    required String assistantLabel,
+    required String ownerLabel,
+  }) {
+    final titleStyle = TextStyle(
+      fontWeight: FontWeight.w800,
+      fontSize: 18,
+      color: scheme.onSurface,
+    );
+    final contentStyle = TextStyle(
+      fontSize: 15,
+      height: 1.35,
+      color: scheme.onSurface,
+    );
+
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      stream: FirestoreService().patientForms(
+        parentUid: parentUid,
+        profileId: ownerProfileId,
+        patientId: patientId,
+      ),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final all = snapshot.data!;
+        final medForms = all.where((doc) {
+          final type = (doc['type'] ?? '').toString().toLowerCase();
+          return type.contains('medecin') || type.contains('assistant');
+        }).toList();
+
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (canAddDoctorForm || canAddForm) ...[
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    if (canAddDoctorForm)
+                      FluentButton(
+                        label: 'Formulaire medecin',
+                        icon: Icons.medical_services_outlined,
+                        onPressed: () => _addDoctorForm(context),
+                      ),
+                    if (canAddForm)
+                      FluentButton(
+                        label: 'Ajouter un formulaire',
+                        icon: Icons.note_add,
+                        onPressed: () => _addForm(context),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 16),
               ],
-            )
-          : null,
+              if (medForms.isEmpty)
+                Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(32),
+                    child: Text(
+                      'Aucun formulaire medical',
+                      style: TextStyle(color: AppTheme.ink2(context)),
+                    ),
+                  ),
+                )
+              else
+                _renderFormGroups(
+                  medForms,
+                  titleStyle,
+                  contentStyle,
+                  patientData,
+                  context: context,
+                  ownerProfileId: ownerProfileId,
+                  doctorId: doctorId,
+                  assistantId: assistantId,
+                  doctorLabel: doctorLabel,
+                  assistantLabel: assistantLabel,
+                  ownerLabel: ownerLabel,
+                  onEdit: (doc, data) =>
+                      _openEditFormDialog(context, doc, data, patientData),
+                ),
+            ],
+          ),
+        );
+      },
     );
   }
 
   double? _parseDouble(dynamic value) => asDoubleOrNull(value);
 
   int? _parseInt(dynamic value) => asIntOrNull(value);
-
-  int? _computeSeanceNumero(Map<String, dynamic> patientData) {
-    final done = _parseInt(patientData['seancesEffectuees']);
-    if (done == null) return 1;
-    if (done <= 0) return 1;
-    return done;
-  }
 
   String _formatMoneyLocal(double value) {
     final isInt = value.truncateToDouble() == value;
@@ -879,58 +1203,6 @@ class PatientDetailsPage extends StatelessWidget {
     return '';
   }
 
-  bool _isDoctorOrPrincipalForPatient(Map<String, dynamic> patientData) {
-    if (ownerProfileId == 'medecin_principal') return true;
-    final doctorId = (patientData['doctorId'] ?? '').toString().trim();
-    return doctorId.isNotEmpty && ownerProfileId == doctorId;
-  }
-
-  List<String> _normalizeCabinetItems(dynamic raw) {
-    if (raw is! List) return const [];
-    final normalized = <String>[];
-    final seen = <String>{};
-    for (final item in raw) {
-      final value = item.toString().trim();
-      if (value.isEmpty) continue;
-      final lower = value.toLowerCase();
-      if (seen.add(lower)) {
-        normalized.add(value);
-      }
-    }
-    normalized.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
-    return normalized;
-  }
-
-  Future<List<String>> _loadCabinetReferenceList({
-    required String fieldName,
-  }) async {
-    try {
-      final cabinet = await ApiService.instance.cabinet();
-      final listes = cabinet['listesReference'];
-      final brut = listes is Map ? listes[fieldName] : null;
-      return _normalizeCabinetItems(brut);
-    } catch (_) {
-      return const [];
-    }
-  }
-
-  Future<void> _appendCabinetReferenceList({
-    required String fieldName,
-    required Iterable<String> values,
-  }) async {
-    final incoming = _normalizeCabinetItems(values.toList());
-    if (incoming.isEmpty) return;
-
-    try {
-      // `arrayUnion` devient `$addToSet` cote serveur : meme resultat, sans
-      // doublons.
-      await ApiService.instance.ajouterListe(fieldName, incoming);
-    } catch (_) {
-      // Ne jamais bloquer l'enregistrement d'une ordonnance/bilan
-      // si la mise a jour de la base cabinet echoue.
-    }
-  }
-
   Widget _pillAction(
     BuildContext context,
     IconData icon,
@@ -964,969 +1236,6 @@ class PatientDetailsPage extends StatelessWidget {
     );
   }
 
-  /// Ouvre la rédaction d'une ordonnance depuis un autre écran.
-  ///
-  /// La consultation guidée poussait le dossier patient pour cela : le médecin
-  /// sortait de son parcours et devait retrouver le bouton lui-même dans une
-  /// page de 4 500 lignes. Il l'appelle maintenant directement.
-  ///
-  /// Ces dialogues restent hébergés ici parce qu'ils tiennent près de mille
-  /// lignes — en-tête du cabinet, listes de référence, mise en page du PDF.
-  /// Les extraire est un chantier ; les exposer suffit à réparer le parcours.
-  /// `PatientDetailsPage` est sans état : on peut en construire une instance
-  /// sans l'afficher, et appeler ces méthodes avec le contexte de l'appelant.
-  Future<void> ouvrirOrdonnance(
-    BuildContext context,
-    Map<String, dynamic> patientData,
-  ) => _openOrdonnanceDialog(context, patientData);
-
-  /// Ouvre la demande de bilan depuis un autre écran.
-  Future<void> ouvrirBilan(
-    BuildContext context,
-    Map<String, dynamic> patientData,
-  ) => _openBilanDialog(context, patientData);
-
-  /// Ouvre le formulaire médecin depuis un autre écran.
-  Future<void> ouvrirFormulaireMedecin(
-    BuildContext context,
-    Map<String, dynamic> patientData,
-  ) => _addDoctorForm(context, patientData: patientData);
-
-  Future<void> _openOrdonnanceDialog(
-    BuildContext context,
-    Map<String, dynamic> patientData,
-  ) async {
-    Map<String, dynamic> profileData = {};
-    try {
-      final profils = await ApiService.instance.profils();
-      profileData = profils.firstWhere(
-        (p) => p['id'] == ownerProfileId,
-        orElse: () => <String, dynamic>{},
-      );
-    } catch (_) {}
-
-    final nameCtrl = TextEditingController(
-      text: (profileData['name'] ?? '').toString(),
-    );
-    final existingNameAr =
-        (profileData['nameAr'] ?? profileData['name_ar'] ?? '')
-            .toString()
-            .trim();
-    final existingSubtitle =
-        (profileData['subtitle'] ?? profileData['specialite'] ?? '')
-            .toString()
-            .trim();
-    final existingWilaya = (profileData['wilaya'] ?? '').toString().trim();
-    final existingAddress =
-        (profileData['address'] ?? profileData['adresse'] ?? '')
-            .toString()
-            .trim();
-    final existingPhone = (profileData['tel'] ?? profileData['phone'] ?? '')
-        .toString()
-        .trim();
-    final nameArCtrl = TextEditingController(text: existingNameAr);
-    final subtitleCtrl = TextEditingController(
-      text: (profileData['subtitle'] ?? profileData['specialite'] ?? '')
-          .toString(),
-    );
-    final wilayaCtrl = TextEditingController(
-      text: (profileData['wilaya'] ?? '').toString(),
-    );
-    final addressCtrl = TextEditingController(
-      text: (profileData['address'] ?? profileData['adresse'] ?? '').toString(),
-    );
-    final phoneCtrl = TextEditingController(
-      text: (profileData['tel'] ?? profileData['phone'] ?? '').toString(),
-    );
-    final noteCtrl = TextEditingController();
-    final currentCounter = _parseInt(profileData['ordonnanceCounter']) ?? 0;
-    final ordNumberCtrl = TextEditingController(text: '${currentCounter + 1}');
-    final canUpdateCabinetMedicaments = _isDoctorOrPrincipalForPatient(
-      patientData,
-    );
-    final cabinetMedicaments = await _loadCabinetReferenceList(
-      fieldName: 'cabinetMedicaments',
-    );
-
-    final lines = <_OrdonnanceLine>[_OrdonnanceLine()];
-    final dateStr = DateFormat('dd/MM/yyyy').format(DateTime.now());
-    final seanceNumeroStr = '';
-    var showOrdonnanceInfo = false;
-
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (dialogContext, setState) {
-            return AlertDialog(
-              title: const Text('Ordonnance medecin'),
-              content: SizedBox(
-                width: AppTheme.dialogWidth(context, 700),
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Card(
-                        margin: EdgeInsets.zero,
-                        child: ListTile(
-                          leading: const Icon(Icons.description_outlined),
-                          title: const Text(
-                            'Infos ordonnance',
-                            style: TextStyle(fontWeight: FontWeight.w700),
-                          ),
-                          subtitle: Text(
-                            showOrdonnanceInfo
-                                ? 'Masquer les champs'
-                                : 'Afficher les champs modifiables',
-                          ),
-                          trailing: Icon(
-                            showOrdonnanceInfo
-                                ? Icons.keyboard_arrow_up
-                                : Icons.keyboard_arrow_down,
-                          ),
-                          onTap: () => setState(
-                            () => showOrdonnanceInfo = !showOrdonnanceInfo,
-                          ),
-                        ),
-                      ),
-                      AnimatedCrossFade(
-                        duration: const Duration(milliseconds: 180),
-                        firstCurve: Curves.easeOut,
-                        secondCurve: Curves.easeIn,
-                        crossFadeState: showOrdonnanceInfo
-                            ? CrossFadeState.showSecond
-                            : CrossFadeState.showFirst,
-                        firstChild: const SizedBox.shrink(),
-                        secondChild: Column(
-                          children: [
-                            const SizedBox(height: 8),
-                            TextField(
-                              controller: nameCtrl,
-                              decoration: const InputDecoration(
-                                labelText: 'Nom medecin',
-                              ),
-                              onChanged: (_) => setState(() {}),
-                            ),
-                            TextField(
-                              controller: nameArCtrl,
-                              decoration: const InputDecoration(
-                                labelText: 'Nom medecin (arabe)',
-                              ),
-                              onChanged: (_) => setState(() {}),
-                            ),
-                            TextField(
-                              controller: subtitleCtrl,
-                              decoration: const InputDecoration(
-                                labelText: 'Sous-titre (optionnel)',
-                              ),
-                              onChanged: (_) => setState(() {}),
-                            ),
-                            TextField(
-                              controller: wilayaCtrl,
-                              decoration: const InputDecoration(
-                                labelText: 'Wilaya (optionnel)',
-                              ),
-                              onChanged: (_) => setState(() {}),
-                            ),
-                            TextField(
-                              controller: addressCtrl,
-                              decoration: const InputDecoration(
-                                labelText: 'Adresse (optionnel)',
-                              ),
-                              onChanged: (_) => setState(() {}),
-                            ),
-                            TextField(
-                              controller: phoneCtrl,
-                              decoration: const InputDecoration(
-                                labelText: 'Telephone (optionnel)',
-                              ),
-                              onChanged: (_) => setState(() {}),
-                            ),
-                            TextField(
-                              controller: ordNumberCtrl,
-                              keyboardType: TextInputType.number,
-                              decoration: const InputDecoration(
-                                labelText: 'Numero ordonnance',
-                              ),
-                              onChanged: (_) => setState(() {}),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: noteCtrl,
-                        decoration: const InputDecoration(
-                          labelText: 'Note de seance (interne)',
-                          prefixIcon: Icon(Icons.sticky_note_2_outlined),
-                        ),
-                        maxLines: 3,
-                      ),
-                      const SizedBox(height: 16),
-                      const Text(
-                        'Prescription',
-                        style: TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                      const SizedBox(height: 8),
-                      ...List.generate(lines.length, (index) {
-                        final line = lines[index];
-                        final currentName = line.nameCtrl.text.trim();
-                        final filteredMedicaments = cabinetMedicaments
-                            .where(
-                              (e) =>
-                                  currentName.isEmpty ||
-                                  e.toLowerCase().contains(
-                                    currentName.toLowerCase(),
-                                  ),
-                            )
-                            .take(currentName.isEmpty ? 8 : 6)
-                            .toList();
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 4),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Checkbox(
-                                value: line.checked,
-                                onChanged: (v) =>
-                                    setState(() => line.checked = v ?? true),
-                              ),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    TextField(
-                                      controller: line.nameCtrl,
-                                      decoration: const InputDecoration(
-                                        labelText: 'Medicament',
-                                        prefixIcon: Icon(
-                                          Icons.medication_outlined,
-                                        ),
-                                      ),
-                                      style: TextStyle(
-                                        fontWeight: canUpdateCabinetMedicaments
-                                            ? FontWeight.w700
-                                            : FontWeight.w500,
-                                      ),
-                                      onChanged: (_) => setState(() {}),
-                                      onTapOutside: (_) => FocusScope.of(
-                                        dialogContext,
-                                      ).unfocus(),
-                                    ),
-                                    if (cabinetMedicaments.isNotEmpty) ...[
-                                      const SizedBox(height: 6),
-                                      Wrap(
-                                        spacing: 6,
-                                        runSpacing: 6,
-                                        children: [
-                                          ...filteredMedicaments.map(
-                                            (m) => ActionChip(
-                                              label: Text(
-                                                m,
-                                                style: TextStyle(
-                                                  fontWeight:
-                                                      canUpdateCabinetMedicaments
-                                                      ? FontWeight.w700
-                                                      : FontWeight.w500,
-                                                ),
-                                              ),
-                                              onPressed: () => setState(
-                                                () => line.nameCtrl.text = m,
-                                              ),
-                                            ),
-                                          ),
-                                          PopupMenuButton<String>(
-                                            tooltip: 'Base medicaments',
-                                            onSelected: (value) {
-                                              setState(
-                                                () =>
-                                                    line.nameCtrl.text = value,
-                                              );
-                                            },
-                                            itemBuilder: (_) => cabinetMedicaments
-                                                .map(
-                                                  (m) => PopupMenuItem<String>(
-                                                    value: m,
-                                                    child: Text(
-                                                      m,
-                                                      style: TextStyle(
-                                                        fontWeight:
-                                                            canUpdateCabinetMedicaments
-                                                            ? FontWeight.w700
-                                                            : FontWeight.w500,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                )
-                                                .toList(),
-                                            child: const Chip(
-                                              label: Text('Voir toute la base'),
-                                              avatar: Icon(
-                                                Icons.arrow_drop_down,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              SizedBox(
-                                width: 80,
-                                child: TextField(
-                                  controller: line.qteCtrl,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Qte',
-                                  ),
-                                  onChanged: (_) => setState(() {}),
-                                ),
-                              ),
-                              IconButton(
-                                tooltip: 'Supprimer',
-                                onPressed: lines.length > 1
-                                    ? () =>
-                                          setState(() => lines.removeAt(index))
-                                    : null,
-                                icon: const Icon(Icons.delete_outline),
-                              ),
-                            ],
-                          ),
-                        );
-                      }),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: TextButton.icon(
-                          onPressed: () =>
-                              setState(() => lines.add(_OrdonnanceLine())),
-                          icon: const Icon(Icons.add),
-                          label: const Text('Ajouter ligne'),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      const Text(
-                        'Apercu',
-                        style: TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                      const SizedBox(height: 8),
-                      _buildOrdonnancePreview(
-                        doctorName: nameCtrl.text.trim(),
-                        doctorNameAr: nameArCtrl.text.trim(),
-                        doctorSubtitle: subtitleCtrl.text.trim(),
-                        wilaya: wilayaCtrl.text.trim(),
-                        address: addressCtrl.text.trim(),
-                        phone: phoneCtrl.text.trim(),
-                        patientNom: (patientData['nom'] ?? '').toString(),
-                        patientPrenom: (patientData['prenom'] ?? '').toString(),
-                        patientAge: (patientData['age'] ?? '').toString(),
-                        dateStr: dateStr,
-                        seanceNumero: '',
-                        ordonnanceNumero: ordNumberCtrl.text.trim(),
-                        lines: lines,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogContext),
-                  child: const Text('Annuler'),
-                ),
-                ElevatedButton(
-                  onPressed: () async {
-                    final items = lines
-                        .where((l) => l.nameCtrl.text.trim().isNotEmpty)
-                        .map((l) => l.toMap())
-                        .toList();
-                    if (items.isEmpty) {
-                      ScaffoldMessenger.of(dialogContext).showSnackBar(
-                        const SnackBar(
-                          content: Text('Ajoute au moins une ligne'),
-                        ),
-                      );
-                      return;
-                    }
-                    final ordRaw = ordNumberCtrl.text.trim();
-                    final ordNumber = int.tryParse(ordRaw);
-                    if (ordNumber == null || ordNumber <= 0) {
-                      ScaffoldMessenger.of(dialogContext).showSnackBar(
-                        const SnackBar(
-                          content: Text('Numero ordonnance invalide'),
-                        ),
-                      );
-                      return;
-                    }
-
-                    final contenu = items
-                        .map((e) {
-                          final name = (e['name'] ?? '').toString().trim();
-                          final qte = (e['qte'] ?? '').toString().trim();
-                          return qte.isEmpty ? name : '$name (Qte: $qte)';
-                        })
-                        .where((e) => e.isNotEmpty)
-                        .join('\n');
-
-                    final data = {
-                      'type': 'Ordonnance medecin',
-                      'contenu': contenu,
-                      'prescriptions': items,
-                      'doctorName': nameCtrl.text.trim(),
-                      'doctorNameAr': nameArCtrl.text.trim(),
-                      'doctorSubtitle': subtitleCtrl.text.trim(),
-                      'doctorWilaya': wilayaCtrl.text.trim(),
-                      'doctorAddress': addressCtrl.text.trim(),
-                      'doctorPhone': phoneCtrl.text.trim(),
-                      'patientNom': (patientData['nom'] ?? '').toString(),
-                      'patientPrenom': (patientData['prenom'] ?? '').toString(),
-                      'patientAge': (patientData['age'] ?? '').toString(),
-                      'dateStr': dateStr,
-                      'ordonnanceNumero': ordNumber,
-                      // seanceNumero intentionally omitted for ordonnance
-                      'note_de_seance': noteCtrl.text.trim(),
-                                      'auteurProfileId': ownerProfileId,
-                      'patientId': patientId,
-                                    };
-
-                    try {
-                      await ApiService.instance.creerDocument(data);
-
-                      if (canUpdateCabinetMedicaments) {
-                        unawaited(
-                          _appendCabinetReferenceList(
-                            fieldName: 'cabinetMedicaments',
-                            values: items
-                                .map((e) => (e['name'] ?? '').toString().trim())
-                                .where((e) => e.isNotEmpty),
-                          ),
-                        );
-                      }
-
-                      final updates = <String, dynamic>{};
-                      final newNameAr = nameArCtrl.text.trim();
-                      if (newNameAr.isNotEmpty && newNameAr != existingNameAr) {
-                        updates['nameAr'] = newNameAr;
-                      }
-                      final newSubtitle = subtitleCtrl.text.trim();
-                      if (newSubtitle.isNotEmpty &&
-                          newSubtitle != existingSubtitle) {
-                        updates['subtitle'] = newSubtitle;
-                      }
-                      final newWilaya = wilayaCtrl.text.trim();
-                      if (newWilaya.isNotEmpty && newWilaya != existingWilaya) {
-                        updates['wilaya'] = newWilaya;
-                      }
-                      final newAddress = addressCtrl.text.trim();
-                      if (newAddress.isNotEmpty &&
-                          newAddress != existingAddress) {
-                        updates['address'] = newAddress;
-                      }
-                      final newPhone = phoneCtrl.text.trim();
-                      if (newPhone.isNotEmpty && newPhone != existingPhone) {
-                        updates['tel'] = newPhone;
-                      }
-                      if (ordNumber > currentCounter) {
-                        updates['ordonnanceCounter'] = ordNumber;
-                      }
-                      if (updates.isNotEmpty) {
-                        await ApiService.instance.majProfil(
-                          ownerProfileId,
-                          updates,
-                        );
-                      }
-                      if (!context.mounted) return;
-                      Navigator.pop(dialogContext);
-                      if (!context.mounted) return;
-                      unawaited(
-                        Future<void>.delayed(
-                          const Duration(milliseconds: 300),
-                          () async {
-                            if (!context.mounted) return;
-                            await _printOrdonnancePdf(
-                              context: context,
-                              doctorName: nameCtrl.text.trim(),
-                              doctorNameAr: nameArCtrl.text.trim(),
-                              doctorSubtitle: subtitleCtrl.text.trim(),
-                              wilaya: wilayaCtrl.text.trim(),
-                              address: addressCtrl.text.trim(),
-                              phone: phoneCtrl.text.trim(),
-                              patientNom: (patientData['nom'] ?? '').toString(),
-                              patientPrenom: (patientData['prenom'] ?? '')
-                                  .toString(),
-                              patientAge: (patientData['age'] ?? '').toString(),
-                              dateStr: dateStr,
-                              seanceNumero: '',
-                              ordonnanceNumero: ordNumber.toString(),
-                              items: items,
-                            );
-                          },
-                        ),
-                      );
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            'Ordonnance enregistree, ouverture PDF...',
-                          ),
-                        ),
-                      );
-                    } catch (e) {
-                      ScaffoldMessenger.of(dialogContext).showSnackBar(
-                        const SnackBar(
-                          content: Text('Erreur lors de l\'enregistrement'),
-                        ),
-                      );
-                    }
-                  },
-                  child: const Text('Enregistrer'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-
-    libererApresFermeture([
-      nameCtrl,
-      nameArCtrl,
-      subtitleCtrl,
-      wilayaCtrl,
-      addressCtrl,
-      phoneCtrl,
-      noteCtrl,
-      ordNumberCtrl,
-    ]);
-    apresFermeture(() {
-      for (final line in lines) {
-        line.dispose();
-      }
-    });
-  }
-
-  Future<void> _openBilanDialog(
-    BuildContext context,
-    Map<String, dynamic> patientData,
-  ) async {
-    Map<String, dynamic> profileData = {};
-    try {
-      final profils = await ApiService.instance.profils();
-      profileData = profils.firstWhere(
-        (p) => p['id'] == ownerProfileId,
-        orElse: () => <String, dynamic>{},
-      );
-    } catch (_) {}
-
-    final nameCtrl = TextEditingController(
-      text: (profileData['name'] ?? '').toString(),
-    );
-    final existingNameAr =
-        (profileData['nameAr'] ?? profileData['name_ar'] ?? '')
-            .toString()
-            .trim();
-    final existingSubtitle =
-        (profileData['subtitle'] ?? profileData['specialite'] ?? '')
-            .toString()
-            .trim();
-    final existingWilaya = (profileData['wilaya'] ?? '').toString().trim();
-    final existingAddress =
-        (profileData['address'] ?? profileData['adresse'] ?? '')
-            .toString()
-            .trim();
-    final existingPhone = (profileData['tel'] ?? profileData['phone'] ?? '')
-        .toString()
-        .trim();
-    final nameArCtrl = TextEditingController(text: existingNameAr);
-    final subtitleCtrl = TextEditingController(
-      text: (profileData['subtitle'] ?? profileData['specialite'] ?? '')
-          .toString(),
-    );
-    final wilayaCtrl = TextEditingController(
-      text: (profileData['wilaya'] ?? '').toString(),
-    );
-    final addressCtrl = TextEditingController(
-      text: (profileData['address'] ?? profileData['adresse'] ?? '').toString(),
-    );
-    final phoneCtrl = TextEditingController(
-      text: (profileData['tel'] ?? profileData['phone'] ?? '').toString(),
-    );
-    final canUpdateCabinetBilans = _isDoctorOrPrincipalForPatient(patientData);
-    final cabinetBilans = await _loadCabinetReferenceList(
-      fieldName: 'cabinetBilans',
-    );
-
-    final lines = <_BilanLine>[_BilanLine()];
-    final dateStr = DateFormat('dd/MM/yyyy').format(DateTime.now());
-    final seanceNumero = _computeSeanceNumero(patientData);
-    final seanceNumeroStr = seanceNumero?.toString() ?? '';
-
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (dialogContext, setState) {
-            return AlertDialog(
-              title: const Text('Demande de bilan'),
-              content: SizedBox(
-                width: AppTheme.dialogWidth(context, 700),
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Infos medecin',
-                        style: TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: nameCtrl,
-                        decoration: const InputDecoration(
-                          labelText: 'Nom medecin',
-                        ),
-                        onChanged: (_) => setState(() {}),
-                      ),
-                      TextField(
-                        controller: nameArCtrl,
-                        decoration: const InputDecoration(
-                          labelText: 'Nom medecin (arabe)',
-                        ),
-                        onChanged: (_) => setState(() {}),
-                      ),
-                      TextField(
-                        controller: subtitleCtrl,
-                        decoration: const InputDecoration(
-                          labelText: 'Sous-titre (optionnel)',
-                        ),
-                        onChanged: (_) => setState(() {}),
-                      ),
-                      TextField(
-                        controller: wilayaCtrl,
-                        decoration: const InputDecoration(
-                          labelText: 'Wilaya (optionnel)',
-                        ),
-                        onChanged: (_) => setState(() {}),
-                      ),
-                      TextField(
-                        controller: addressCtrl,
-                        decoration: const InputDecoration(
-                          labelText: 'Adresse (optionnel)',
-                        ),
-                        onChanged: (_) => setState(() {}),
-                      ),
-                      TextField(
-                        controller: phoneCtrl,
-                        decoration: const InputDecoration(
-                          labelText: 'Telephone (optionnel)',
-                        ),
-                        onChanged: (_) => setState(() {}),
-                      ),
-                      const SizedBox(height: 16),
-                      const Text(
-                        'Examens demandes',
-                        style: TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                      const SizedBox(height: 8),
-                      ...List.generate(lines.length, (index) {
-                        final line = lines[index];
-                        final currentName = line.nameCtrl.text.trim();
-                        final filteredBilans = cabinetBilans
-                            .where(
-                              (e) =>
-                                  currentName.isEmpty ||
-                                  e.toLowerCase().contains(
-                                    currentName.toLowerCase(),
-                                  ),
-                            )
-                            .take(currentName.isEmpty ? 8 : 6)
-                            .toList();
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 4),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Checkbox(
-                                value: line.checked,
-                                onChanged: (v) =>
-                                    setState(() => line.checked = v ?? true),
-                              ),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    TextField(
-                                      controller: line.nameCtrl,
-                                      decoration: const InputDecoration(
-                                        labelText: 'Examen / Bilan',
-                                        prefixIcon: Icon(
-                                          Icons.science_outlined,
-                                        ),
-                                      ),
-                                      style: TextStyle(
-                                        fontWeight: canUpdateCabinetBilans
-                                            ? FontWeight.w700
-                                            : FontWeight.w500,
-                                      ),
-                                      onChanged: (_) => setState(() {}),
-                                      onTapOutside: (_) => FocusScope.of(
-                                        dialogContext,
-                                      ).unfocus(),
-                                    ),
-                                    if (cabinetBilans.isNotEmpty) ...[
-                                      const SizedBox(height: 6),
-                                      Wrap(
-                                        spacing: 6,
-                                        runSpacing: 6,
-                                        children: [
-                                          ...filteredBilans.map(
-                                            (b) => ActionChip(
-                                              label: Text(
-                                                b,
-                                                style: TextStyle(
-                                                  fontWeight:
-                                                      canUpdateCabinetBilans
-                                                      ? FontWeight.w700
-                                                      : FontWeight.w500,
-                                                ),
-                                              ),
-                                              onPressed: () => setState(
-                                                () => line.nameCtrl.text = b,
-                                              ),
-                                            ),
-                                          ),
-                                          PopupMenuButton<String>(
-                                            tooltip: 'Base bilans',
-                                            onSelected: (value) {
-                                              setState(
-                                                () =>
-                                                    line.nameCtrl.text = value,
-                                              );
-                                            },
-                                            itemBuilder: (_) => cabinetBilans
-                                                .map(
-                                                  (b) => PopupMenuItem<String>(
-                                                    value: b,
-                                                    child: Text(
-                                                      b,
-                                                      style: TextStyle(
-                                                        fontWeight:
-                                                            canUpdateCabinetBilans
-                                                            ? FontWeight.w700
-                                                            : FontWeight.w500,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                )
-                                                .toList(),
-                                            child: const Chip(
-                                              label: Text('Voir toute la base'),
-                                              avatar: Icon(
-                                                Icons.arrow_drop_down,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              ),
-                              IconButton(
-                                tooltip: 'Supprimer',
-                                onPressed: lines.length > 1
-                                    ? () =>
-                                          setState(() => lines.removeAt(index))
-                                    : null,
-                                icon: const Icon(Icons.delete_outline),
-                              ),
-                            ],
-                          ),
-                        );
-                      }),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: TextButton.icon(
-                          onPressed: () =>
-                              setState(() => lines.add(_BilanLine())),
-                          icon: const Icon(Icons.add),
-                          label: const Text('Ajouter ligne'),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      const Text(
-                        'Apercu',
-                        style: TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                      const SizedBox(height: 8),
-                      _buildBilanPreview(
-                        doctorName: nameCtrl.text.trim(),
-                        doctorNameAr: nameArCtrl.text.trim(),
-                        doctorSubtitle: subtitleCtrl.text.trim(),
-                        wilaya: wilayaCtrl.text.trim(),
-                        address: addressCtrl.text.trim(),
-                        phone: phoneCtrl.text.trim(),
-                        patientNom: (patientData['nom'] ?? '').toString(),
-                        patientPrenom: (patientData['prenom'] ?? '').toString(),
-                        patientAge: (patientData['age'] ?? '').toString(),
-                        dateStr: dateStr,
-                        seanceNumero: seanceNumeroStr,
-                        lines: lines,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogContext),
-                  child: const Text('Annuler'),
-                ),
-                ElevatedButton(
-                  onPressed: () async {
-                    final items = lines
-                        .where((l) => l.nameCtrl.text.trim().isNotEmpty)
-                        .map((l) => l.toMap())
-                        .toList();
-                    if (items.isEmpty) {
-                      ScaffoldMessenger.of(dialogContext).showSnackBar(
-                        const SnackBar(
-                          content: Text('Ajoute au moins une ligne'),
-                        ),
-                      );
-                      return;
-                    }
-
-                    final contenu = items
-                        .map((e) => (e['name'] ?? '').toString().trim())
-                        .where((e) => e.isNotEmpty)
-                        .join('\n');
-
-                    final data = {
-                      'type': 'Demande de bilan',
-                      'contenu': contenu,
-                      'examens': items,
-                      'doctorName': nameCtrl.text.trim(),
-                      'doctorNameAr': nameArCtrl.text.trim(),
-                      'doctorSubtitle': subtitleCtrl.text.trim(),
-                      'doctorWilaya': wilayaCtrl.text.trim(),
-                      'doctorAddress': addressCtrl.text.trim(),
-                      'doctorPhone': phoneCtrl.text.trim(),
-                      'patientNom': (patientData['nom'] ?? '').toString(),
-                      'patientPrenom': (patientData['prenom'] ?? '').toString(),
-                      'patientAge': (patientData['age'] ?? '').toString(),
-                      'dateStr': dateStr,
-                      if (seanceNumero != null) 'seanceNumero': seanceNumero,
-                                      'auteurProfileId': ownerProfileId,
-                      'patientId': patientId,
-                                    };
-
-                    try {
-                      await ApiService.instance.creerDocument(data);
-
-                      if (canUpdateCabinetBilans) {
-                        unawaited(
-                          _appendCabinetReferenceList(
-                            fieldName: 'cabinetBilans',
-                            values: items
-                                .map((e) => (e['name'] ?? '').toString().trim())
-                                .where((e) => e.isNotEmpty),
-                          ),
-                        );
-                      }
-
-                      final updates = <String, dynamic>{};
-                      final newNameAr = nameArCtrl.text.trim();
-                      if (newNameAr.isNotEmpty && newNameAr != existingNameAr) {
-                        updates['nameAr'] = newNameAr;
-                      }
-                      final newSubtitle = subtitleCtrl.text.trim();
-                      if (newSubtitle.isNotEmpty &&
-                          newSubtitle != existingSubtitle) {
-                        updates['subtitle'] = newSubtitle;
-                      }
-                      final newWilaya = wilayaCtrl.text.trim();
-                      if (newWilaya.isNotEmpty && newWilaya != existingWilaya) {
-                        updates['wilaya'] = newWilaya;
-                      }
-                      final newAddress = addressCtrl.text.trim();
-                      if (newAddress.isNotEmpty &&
-                          newAddress != existingAddress) {
-                        updates['address'] = newAddress;
-                      }
-                      final newPhone = phoneCtrl.text.trim();
-                      if (newPhone.isNotEmpty && newPhone != existingPhone) {
-                        updates['tel'] = newPhone;
-                      }
-                      if (updates.isNotEmpty) {
-                        await ApiService.instance.majProfil(
-                          ownerProfileId,
-                          updates,
-                        );
-                      }
-                      if (!context.mounted) return;
-                      Navigator.pop(dialogContext);
-                      if (!context.mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: const Text('Demande de bilan enregistree'),
-                          action: SnackBarAction(
-                            label: 'Ouvrir PDF',
-                            onPressed: () {
-                              unawaited(
-                                _printBilanPdf(
-                                  context: context,
-                                  doctorName: nameCtrl.text.trim(),
-                                  doctorNameAr: nameArCtrl.text.trim(),
-                                  doctorSubtitle: subtitleCtrl.text.trim(),
-                                  wilaya: wilayaCtrl.text.trim(),
-                                  address: addressCtrl.text.trim(),
-                                  phone: phoneCtrl.text.trim(),
-                                  patientNom: (patientData['nom'] ?? '')
-                                      .toString(),
-                                  patientPrenom: (patientData['prenom'] ?? '')
-                                      .toString(),
-                                  patientAge: (patientData['age'] ?? '')
-                                      .toString(),
-                                  dateStr: dateStr,
-                                  seanceNumero: seanceNumeroStr,
-                                  items: items,
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                      );
-                    } catch (e) {
-                      ScaffoldMessenger.of(dialogContext).showSnackBar(
-                        const SnackBar(
-                          content: Text('Erreur lors de l\'enregistrement'),
-                        ),
-                      );
-                    }
-                  },
-                  child: const Text('Enregistrer'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-
-    libererApresFermeture([
-      nameCtrl,
-      nameArCtrl,
-      subtitleCtrl,
-      wilayaCtrl,
-      addressCtrl,
-      phoneCtrl,
-    ]);
-    apresFermeture(() {
-      for (final line in lines) {
-        line.dispose();
-      }
-    });
-  }
-
   Future<void> _openReglementDialog(
     BuildContext context,
     Map<String, dynamic> patientData,
@@ -1953,43 +1262,46 @@ class PatientDetailsPage extends StatelessWidget {
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Reglement'),
-        content: _scrollableDialogContent(context, Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (currentPrix != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Text(
-                  'Total actuel: DA ${initialPrix.isEmpty ? '0' : initialPrix}',
-                  style: const TextStyle(fontWeight: FontWeight.w600),
+        content: _scrollableDialogContent(
+          context,
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (currentPrix != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    'Total actuel: DA ${initialPrix.isEmpty ? '0' : initialPrix}',
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+              TextField(
+                controller: prixCtrl,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: const InputDecoration(
+                  labelText: 'Total a payer',
+                  prefixText: 'DA ',
+                  helperText: 'Ce que le patient doit en tout',
                 ),
               ),
-            TextField(
-              controller: prixCtrl,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
+              const SizedBox(height: 14),
+              TextField(
+                controller: tarifCtrl,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: const InputDecoration(
+                  labelText: 'Tarif d’une seance',
+                  prefixText: 'DA ',
+                  helperText: 'Propose a la cloture, et ajoute au total',
+                ),
               ),
-              decoration: const InputDecoration(
-                labelText: 'Total a payer',
-                prefixText: 'DA ',
-                helperText: 'Ce que le patient doit en tout',
-              ),
-            ),
-            const SizedBox(height: 14),
-            TextField(
-              controller: tarifCtrl,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              decoration: const InputDecoration(
-                labelText: 'Tarif d’une seance',
-                prefixText: 'DA ',
-                helperText: 'Propose a la cloture, et ajoute au total',
-              ),
-            ),
-          ],
-        )),
+            ],
+          ),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -2065,25 +1377,30 @@ class PatientDetailsPage extends StatelessWidget {
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Seances'),
-        content: _scrollableDialogContent(context, Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (currentTotal != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Text(
-                  'Total actuel: $currentTotal',
-                  style: const TextStyle(fontWeight: FontWeight.w600),
+        content: _scrollableDialogContent(
+          context,
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (currentTotal != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    'Total actuel: $currentTotal',
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+              TextField(
+                controller: seancesCtrl,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Nombre de seances',
                 ),
               ),
-            TextField(
-              controller: seancesCtrl,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'Nombre de seances'),
-            ),
-          ],
-        )),
+            ],
+          ),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -2133,6 +1450,170 @@ class PatientDetailsPage extends StatelessWidget {
     }
   }
 
+  Future<void> _openInfosMedicalesDialog(
+    BuildContext context,
+    Map<String, dynamic> patientData,
+  ) async {
+    const sexes = ['', 'Homme', 'Femme'];
+    const groupesSanguins = [
+      '',
+      'A+',
+      'A-',
+      'B+',
+      'B-',
+      'AB+',
+      'AB-',
+      'O+',
+      'O-',
+    ];
+
+    var sexe = (patientData['sexe'] ?? '').toString();
+    if (!sexes.contains(sexe)) sexe = '';
+    var groupeSanguin = (patientData['groupeSanguin'] ?? '').toString();
+    if (!groupesSanguins.contains(groupeSanguin)) groupeSanguin = '';
+
+    final adresseCtrl = TextEditingController(
+      text: (patientData['adresse'] ?? '').toString(),
+    );
+    final allergiesCtrl = TextEditingController(
+      text: (patientData['allergies'] ?? '').toString(),
+    );
+    final contactNomCtrl = TextEditingController(
+      text: (patientData['contactUrgenceNom'] ?? '').toString(),
+    );
+    final contactTelCtrl = TextEditingController(
+      text: (patientData['contactUrgenceTel'] ?? '').toString(),
+    );
+
+    final res = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setState) {
+          return AlertDialog(
+            title: const Text('Informations médicales'),
+            content: _scrollableDialogContent(
+              context,
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  DropdownButtonFormField<String>(
+                    value: sexe,
+                    decoration: const InputDecoration(labelText: 'Sexe'),
+                    items: sexes
+                        .map(
+                          (s) => DropdownMenuItem(
+                            value: s,
+                            child: Text(s.isEmpty ? 'Non renseigné' : s),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (v) => setState(() => sexe = v ?? ''),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    value: groupeSanguin,
+                    decoration: const InputDecoration(
+                      labelText: 'Groupe sanguin',
+                    ),
+                    items: groupesSanguins
+                        .map(
+                          (g) => DropdownMenuItem(
+                            value: g,
+                            child: Text(g.isEmpty ? 'Non renseigné' : g),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (v) => setState(() => groupeSanguin = v ?? ''),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: adresseCtrl,
+                    decoration: const InputDecoration(labelText: 'Adresse'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: allergiesCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Allergies',
+                      hintText: 'Ex : pénicilline, iode…',
+                    ),
+                    maxLines: 2,
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: contactNomCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Contact urgence — nom',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: contactTelCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Contact urgence — téléphone',
+                    ),
+                    keyboardType: TextInputType.phone,
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Annuler'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: const Text('Enregistrer'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    if (res != true) {
+      libererApresFermeture([
+        adresseCtrl,
+        allergiesCtrl,
+        contactNomCtrl,
+        contactTelCtrl,
+      ]);
+      return;
+    }
+
+    final updates = {
+      'sexe': sexe,
+      'groupeSanguin': groupeSanguin,
+      'adresse': adresseCtrl.text.trim(),
+      'allergies': allergiesCtrl.text.trim(),
+      'contactUrgenceNom': contactNomCtrl.text.trim(),
+      'contactUrgenceTel': contactTelCtrl.text.trim(),
+    };
+    libererApresFermeture([
+      adresseCtrl,
+      allergiesCtrl,
+      contactNomCtrl,
+      contactTelCtrl,
+    ]);
+
+    try {
+      await _updatePatientCopies(patientData, updates);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Informations médicales mises à jour')),
+        );
+      }
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Erreur lors de la mise à jour')),
+        );
+      }
+    }
+  }
+
   /// Enregistre une modification du dossier.
   ///
   /// Le batch ecrivait sur les trois copies — profil courant, medecin,
@@ -2155,641 +1636,6 @@ class PatientDetailsPage extends StatelessWidget {
     await ApiService.instance.majPatient(patientId, {'nombreSeances': total});
   }
 
-  Widget _buildBilanPreview({
-    required String doctorName,
-    required String doctorNameAr,
-    required String doctorSubtitle,
-    required String wilaya,
-    required String address,
-    required String phone,
-    required String patientNom,
-    required String patientPrenom,
-    required String patientAge,
-    required String dateStr,
-    required String seanceNumero,
-    required List<_BilanLine> lines,
-  }) {
-    final visibleLines = lines
-        .where((l) => l.checked && l.nameCtrl.text.trim().isNotEmpty)
-        .toList();
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.grey.shade400),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      doctorName.isEmpty ? ' ' : doctorName,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    if (doctorSubtitle.isNotEmpty) Text(doctorSubtitle),
-                    if (wilaya.isNotEmpty) Text('Wilaya : $wilaya'),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    if (doctorNameAr.isNotEmpty)
-                      Directionality(
-                        textDirection: ui.TextDirection.rtl,
-                        child: Text(
-                          doctorNameAr,
-                          style: const TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                      ),
-                    Text('Date : $dateStr'),
-                    if (seanceNumero.isNotEmpty) Text('Seance : $seanceNumero'),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Center(
-            child: Text(
-              'DEMANDE DE BILAN',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 1,
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 24,
-            runSpacing: 6,
-            children: [
-              Text('Nom : $patientNom'),
-              Text('Prenom : $patientPrenom'),
-              Text('Age : $patientAge'),
-            ],
-          ),
-          const SizedBox(height: 8),
-          const Divider(thickness: 1),
-          const SizedBox(height: 6),
-          const Text(
-            'Examens demandes',
-            style: TextStyle(fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 6),
-          if (visibleLines.isEmpty)
-            const Text('Aucun examen')
-          else
-            ...visibleLines.map((line) {
-              final name = line.nameCtrl.text.trim();
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 2),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(
-                      line.checked
-                          ? Icons.check_box
-                          : Icons.check_box_outline_blank,
-                      size: 16,
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(child: Text(name)),
-                  ],
-                ),
-              );
-            }).toList(),
-          const SizedBox(height: 16),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (address.isNotEmpty) Text(address),
-                    if (phone.isNotEmpty) Text(phone),
-                  ],
-                ),
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  const Text('Signature'),
-                  const SizedBox(height: 6),
-                  Container(height: 1, width: 160, color: Colors.black),
-                ],
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildOrdonnancePreview({
-    required String doctorName,
-    required String doctorNameAr,
-    required String doctorSubtitle,
-    required String wilaya,
-    required String address,
-    required String phone,
-    required String patientNom,
-    required String patientPrenom,
-    required String patientAge,
-    required String dateStr,
-    required String seanceNumero,
-    required String ordonnanceNumero,
-    required List<_OrdonnanceLine> lines,
-  }) {
-    final visibleLines = lines
-        .where((l) => l.checked && l.nameCtrl.text.trim().isNotEmpty)
-        .toList();
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.grey.shade400),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      doctorName.isEmpty ? ' ' : doctorName,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    if (doctorSubtitle.isNotEmpty) Text(doctorSubtitle),
-                    if (wilaya.isNotEmpty) Text('Wilaya : $wilaya'),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    if (doctorNameAr.isNotEmpty)
-                      Directionality(
-                        textDirection: ui.TextDirection.rtl,
-                        child: Text(
-                          doctorNameAr,
-                          style: const TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                      ),
-                    if (ordonnanceNumero.isNotEmpty)
-                      Text('Ordonnance N°: $ordonnanceNumero'),
-                    Text('Date : $dateStr'),
-                    if (seanceNumero.isNotEmpty) Text('Seance : $seanceNumero'),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Center(
-            child: Text(
-              'ORDONNANCE MEDECIN',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 1,
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 24,
-            runSpacing: 6,
-            children: [
-              Text('Nom : $patientNom'),
-              Text('Prenom : $patientPrenom'),
-              Text('Age : $patientAge'),
-            ],
-          ),
-          const SizedBox(height: 8),
-          const Divider(thickness: 1),
-          const SizedBox(height: 6),
-          const Text(
-            'Prescription',
-            style: TextStyle(fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 6),
-          if (visibleLines.isEmpty)
-            const Text('Aucune prescription')
-          else
-            ...visibleLines.map((line) {
-              final name = line.nameCtrl.text.trim();
-              final qte = line.qteCtrl.text.trim();
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 2),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(
-                      line.checked
-                          ? Icons.check_box
-                          : Icons.check_box_outline_blank,
-                      size: 16,
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(name),
-                          if (qte.isNotEmpty) Text('Qte : $qte'),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }).toList(),
-          const SizedBox(height: 16),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (address.isNotEmpty) Text(address),
-                    if (phone.isNotEmpty) Text(phone),
-                  ],
-                ),
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  const Text('Signature'),
-                  const SizedBox(height: 6),
-                  Container(height: 1, width: 160, color: Colors.black),
-                ],
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<_PdfFonts> _resolvePdfFonts() async {
-    pw.Font base = pw.Font.helvetica();
-    pw.Font bold = pw.Font.helveticaBold();
-    pw.Font arabic = base;
-    try {
-      base = await PdfGoogleFonts.notoSansRegular();
-      bold = await PdfGoogleFonts.notoSansBold();
-    } catch (_) {}
-    try {
-      arabic = await PdfGoogleFonts.notoNaskhArabicRegular();
-    } catch (_) {
-      arabic = base;
-    }
-    return _PdfFonts(base: base, bold: bold, arabic: arabic);
-  }
-
-  Future<Uint8List> _buildMedicalPdfBytes({
-    required String title,
-    required String sectionTitle,
-    required List<String> entries,
-    required String emptyLabel,
-    required String doctorName,
-    required String doctorNameAr,
-    required String doctorSubtitle,
-    required String wilaya,
-    required String address,
-    required String phone,
-    required String patientNom,
-    required String patientPrenom,
-    required String patientAge,
-    required String dateStr,
-    required String seanceNumero,
-    String documentNumberLabel = '',
-    String documentNumber = '',
-  }) async {
-    final fonts = await _resolvePdfFonts();
-    final doc = pw.Document(
-      theme: pw.ThemeData.withFont(base: fonts.base, bold: fonts.bold),
-    );
-
-    final titleStyle = pw.TextStyle(
-      font: fonts.bold,
-      fontSize: 16,
-      letterSpacing: 1,
-    );
-    final labelStyle = pw.TextStyle(font: fonts.bold, fontSize: 11);
-    final smallStyle = pw.TextStyle(fontSize: 10);
-
-    doc.addPage(
-      pw.MultiPage(
-        pageFormat: PdfPageFormat.a4,
-        margin: const pw.EdgeInsets.all(32),
-        build: (context) => [
-          pw.Row(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              pw.Expanded(
-                child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Text(
-                      doctorName.isEmpty ? ' ' : doctorName,
-                      style: labelStyle,
-                    ),
-                    if (doctorSubtitle.isNotEmpty)
-                      pw.Text(doctorSubtitle, style: smallStyle),
-                  ],
-                ),
-              ),
-              pw.SizedBox(width: 12),
-              pw.Expanded(
-                child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.end,
-                  children: [
-                    if (doctorNameAr.isNotEmpty)
-                      pw.Directionality(
-                        textDirection: pw.TextDirection.rtl,
-                        child: pw.Text(
-                          doctorNameAr,
-                          style: pw.TextStyle(font: fonts.arabic, fontSize: 12),
-                        ),
-                      ),
-                    if (wilaya.isNotEmpty)
-                      pw.Text('Wilaya : $wilaya', style: smallStyle),
-                    if (documentNumber.isNotEmpty)
-                      pw.Text(
-                        '$documentNumberLabel : $documentNumber',
-                        style: smallStyle,
-                      ),
-                    pw.Text('Date : $dateStr', style: smallStyle),
-                    if (seanceNumero.isNotEmpty)
-                      pw.Text('Seance : $seanceNumero', style: smallStyle),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          pw.SizedBox(height: 12),
-          pw.Center(child: pw.Text(title, style: titleStyle)),
-          pw.SizedBox(height: 12),
-          pw.Wrap(
-            spacing: 24,
-            runSpacing: 6,
-            children: [
-              pw.Text('Nom : $patientNom'),
-              pw.Text('Prenom : $patientPrenom'),
-              pw.Text('Age : $patientAge'),
-            ],
-          ),
-          pw.SizedBox(height: 8),
-          pw.Divider(thickness: 1),
-          pw.SizedBox(height: 6),
-          pw.Text(sectionTitle, style: labelStyle),
-          pw.SizedBox(height: 6),
-          if (entries.isEmpty)
-            pw.Text(emptyLabel, style: smallStyle)
-          else
-            pw.Column(
-              children: entries
-                  .map(
-                    (entry) => pw.Padding(
-                      padding: const pw.EdgeInsets.symmetric(vertical: 2),
-                      child: pw.Row(
-                        crossAxisAlignment: pw.CrossAxisAlignment.start,
-                        children: [
-                          pw.Text('- '),
-                          pw.Expanded(child: pw.Text(entry)),
-                        ],
-                      ),
-                    ),
-                  )
-                  .toList(),
-            ),
-        ],
-        footer: (context) {
-          if (address.isEmpty && phone.isEmpty) {
-            return pw.Container(
-              alignment: pw.Alignment.centerRight,
-              child: pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.end,
-                children: [
-                  pw.Text('Signature', style: smallStyle),
-                  pw.SizedBox(height: 6),
-                  pw.Container(height: 1, width: 160, color: PdfColors.black),
-                ],
-              ),
-            );
-          }
-          return pw.Row(
-            crossAxisAlignment: pw.CrossAxisAlignment.end,
-            children: [
-              pw.Expanded(
-                child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    if (address.isNotEmpty) pw.Text(address, style: smallStyle),
-                    if (phone.isNotEmpty) pw.Text(phone, style: smallStyle),
-                  ],
-                ),
-              ),
-              pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.end,
-                children: [
-                  pw.Text('Signature', style: smallStyle),
-                  pw.SizedBox(height: 6),
-                  pw.Container(height: 1, width: 160, color: PdfColors.black),
-                ],
-              ),
-            ],
-          );
-        },
-      ),
-    );
-
-    return doc.save();
-  }
-
-  String _sanitizeFileName(String value) {
-    final cleaned = value.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
-    final ascii = cleaned.replaceAll(RegExp(r'[^A-Za-z0-9._-]+'), '_');
-    return ascii.isEmpty ? 'document' : ascii;
-  }
-
-  Future<File> _writePdfTemp(Uint8List bytes, String baseName) async {
-    final dir = Directory.systemTemp;
-    final stamp = DateTime.now().millisecondsSinceEpoch;
-    final safe = _sanitizeFileName(baseName);
-    final file = File('${dir.path}\\${safe}_$stamp.pdf');
-    await file.writeAsBytes(bytes, flush: true);
-    return file;
-  }
-
-  Future<void> _openPdfInBrowser(File file) async {
-    HttpServer? server;
-    try {
-      server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-      final port = server.port;
-      server.listen((HttpRequest request) async {
-        request.response.statusCode = HttpStatus.ok;
-        request.response.headers.contentType = ContentType(
-          'application',
-          'pdf',
-        );
-        await request.response.addStream(file.openRead());
-        await request.response.close();
-      });
-
-      final url = Uri.parse('http://127.0.0.1:$port/document.pdf');
-      final opened = await launchUrl(url, mode: LaunchMode.externalApplication);
-      if (!opened && Platform.isWindows) {
-        try {
-          await Process.start('cmd', ['/c', 'start', '', url.toString()]);
-        } catch (_) {}
-      }
-      Future.delayed(const Duration(minutes: 2), () {
-        try {
-          server?.close(force: true);
-        } catch (_) {}
-      });
-    } catch (_) {
-      if (Platform.isWindows) {
-        try {
-          await Process.start('cmd', ['/c', 'start', '', file.path]);
-        } catch (_) {}
-      }
-    }
-  }
-
-  Future<void> _printOrdonnancePdf({
-    required BuildContext context,
-    required String doctorName,
-    required String doctorNameAr,
-    required String doctorSubtitle,
-    required String wilaya,
-    required String address,
-    required String phone,
-    required String patientNom,
-    required String patientPrenom,
-    required String patientAge,
-    required String dateStr,
-    required String seanceNumero,
-    required String ordonnanceNumero,
-    required List<Map<String, dynamic>> items,
-  }) async {
-    final entries = items
-        .where((e) => (e['checked'] as bool?) ?? true)
-        .map((e) {
-          final name = (e['name'] ?? '').toString().trim();
-          if (name.isEmpty) return '';
-          final qte = (e['qte'] ?? '').toString().trim();
-          return qte.isEmpty ? name : '$name (Qte: $qte)';
-        })
-        .where((e) => e.isNotEmpty)
-        .toList();
-
-    try {
-      final bytes = await _buildMedicalPdfBytes(
-        title: 'ORDONNANCE MEDECIN',
-        sectionTitle: 'Prescription',
-        entries: entries,
-        emptyLabel: 'Aucune prescription',
-        doctorName: doctorName,
-        doctorNameAr: doctorNameAr,
-        doctorSubtitle: doctorSubtitle,
-        wilaya: wilaya,
-        address: address,
-        phone: phone,
-        patientNom: patientNom,
-        patientPrenom: patientPrenom,
-        patientAge: patientAge,
-        dateStr: dateStr,
-        seanceNumero: seanceNumero,
-        documentNumberLabel: 'Ordonnance N°',
-        documentNumber: ordonnanceNumero,
-      );
-      final file = await _writePdfTemp(
-        bytes,
-        'Ordonnance_${patientNom}_${ordonnanceNumero}_$dateStr',
-      );
-      await _openPdfInBrowser(file);
-    } catch (_) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Erreur lors de la generation du PDF')),
-        );
-      }
-    }
-  }
-
-  Future<void> _printBilanPdf({
-    required BuildContext context,
-    required String doctorName,
-    required String doctorNameAr,
-    required String doctorSubtitle,
-    required String wilaya,
-    required String address,
-    required String phone,
-    required String patientNom,
-    required String patientPrenom,
-    required String patientAge,
-    required String dateStr,
-    required String seanceNumero,
-    required List<Map<String, dynamic>> items,
-  }) async {
-    final entries = items
-        .where((e) => (e['checked'] as bool?) ?? true)
-        .map((e) => (e['name'] ?? '').toString().trim())
-        .where((e) => e.isNotEmpty)
-        .toList();
-
-    try {
-      final bytes = await _buildMedicalPdfBytes(
-        title: 'DEMANDE DE BILAN',
-        sectionTitle: 'Examens demandes',
-        entries: entries,
-        emptyLabel: 'Aucun examen',
-        doctorName: doctorName,
-        doctorNameAr: doctorNameAr,
-        doctorSubtitle: doctorSubtitle,
-        wilaya: wilaya,
-        address: address,
-        phone: phone,
-        patientNom: patientNom,
-        patientPrenom: patientPrenom,
-        patientAge: patientAge,
-        dateStr: dateStr,
-        seanceNumero: seanceNumero,
-      );
-      final file = await _writePdfTemp(bytes, 'Bilan_${patientNom}_$dateStr');
-      await _openPdfInBrowser(file);
-    } catch (_) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Erreur lors de la generation du PDF')),
-        );
-      }
-    }
-  }
-
   Future<void> _addForm(BuildContext context) async {
     final ctrl = TextEditingController();
     final typeCtrl = TextEditingController(text: 'Note');
@@ -2797,23 +1643,26 @@ class PatientDetailsPage extends StatelessWidget {
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Nouveau formulaire'),
-        content: _scrollableDialogContent(context, Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: typeCtrl,
-              decoration: const InputDecoration(labelText: 'Type'),
-            ),
-            TextField(
-              controller: ctrl,
-              maxLines: 4,
-              decoration: const InputDecoration(
-                labelText: 'Contenu',
-                alignLabelWithHint: true,
+        content: _scrollableDialogContent(
+          context,
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: typeCtrl,
+                decoration: const InputDecoration(labelText: 'Type'),
               ),
-            ),
-          ],
-        )),
+              TextField(
+                controller: ctrl,
+                maxLines: 4,
+                decoration: const InputDecoration(
+                  labelText: 'Contenu',
+                  alignLabelWithHint: true,
+                ),
+              ),
+            ],
+          ),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -2849,7 +1698,6 @@ class PatientDetailsPage extends StatelessWidget {
 
       await ApiService.instance.creerDocument(data);
 
-
       if (context.mounted) {
         ScaffoldMessenger.of(
           context,
@@ -2871,9 +1719,7 @@ class PatientDetailsPage extends StatelessWidget {
     Map<String, dynamic>? patientData,
   }) async {
     final resolvedPatient = patientData ?? await _fetchPatientData();
-    final prototypeFields = await _resolveDoctorPrototypeFields(
-      resolvedPatient,
-    );
+    final prototypeFields = await resolveMotifPrototypeFields(resolvedPatient);
     final auteurName = _resolveAuteurNameForCurrent(resolvedPatient);
     if (prototypeFields.isNotEmpty) {
       await _addDoctorFormPrototype(
@@ -3336,52 +2182,6 @@ class PatientDetailsPage extends StatelessWidget {
     await ApiService.instance.majDocument(id, updates);
   }
 
-  Future<List<String>> _resolveDoctorPrototypeFields(
-    Map<String, dynamic> patientData,
-  ) async {
-    final motif = _pickMotif(patientData);
-    if (motif.isEmpty) return [];
-
-    try {
-      // Le repli sur le profil disparait : les prototypes vivaient a deux
-      // endroits, le backend n'en a plus qu'un.
-      final cabinet = await ApiService.instance.cabinet();
-      final dynamic raw = cabinet['motifPrototypes'];
-      if (raw is! Map) return [];
-      final map = <String, List<String>>{};
-      raw.forEach((key, value) {
-        final k = key.toString().trim();
-        if (k.isEmpty) return;
-        if (value is List) {
-          final list = value
-              .map((e) => e.toString().trim())
-              .where((e) => e.isNotEmpty)
-              .toList();
-          if (list.isNotEmpty) map[k] = list;
-        }
-      });
-      if (map.isEmpty) return [];
-      String? match;
-      for (final k in map.keys) {
-        if (k.toLowerCase() == motif.toLowerCase()) {
-          match = k;
-          break;
-        }
-      }
-      if (match == null) return [];
-      final fields = map[match] ?? [];
-      final unique = <String>[];
-      for (final f in fields) {
-        final cleaned = f.trim();
-        if (cleaned.isEmpty) continue;
-        if (!unique.contains(cleaned)) unique.add(cleaned);
-      }
-      return unique;
-    } catch (_) {
-      return [];
-    }
-  }
-
   Future<Map<String, dynamic>> _fetchPatientData() async {
     try {
       return await ApiService.instance.patient(patientId);
@@ -3442,7 +2242,7 @@ class PatientDetailsPage extends StatelessWidget {
 
     final sections = <String, String>{};
     for (final f in fields) {
-      final key = _normalizeSectionKey(f);
+      final key = normalizeSectionKey(f);
       sections[key] = controllers[f]?.text.trim() ?? '';
     }
 
@@ -3474,57 +2274,11 @@ class PatientDetailsPage extends StatelessWidget {
       }
     }
   }
-
-  String _pickMotif(Map<String, dynamic> patientData) {
-    final candidates = <String>[];
-    final rawList = patientData['motifs'];
-    if (rawList is List) {
-      for (final v in rawList) {
-        final s = v.toString().trim();
-        if (s.isNotEmpty) candidates.add(s);
-      }
-    }
-    if (candidates.isEmpty) {
-      final raw = (patientData['motif'] ?? '').toString();
-      if (raw.isNotEmpty) {
-        candidates.addAll(
-          raw.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty),
-        );
-      }
-    }
-    for (final c in candidates) {
-      final lower = c.toLowerCase();
-      if (lower.startsWith('autre:')) continue;
-      return c;
-    }
-    if (candidates.isNotEmpty) return candidates.first;
-    return '';
-  }
-
-  String _normalizeSectionKey(String label) {
-    final raw = label.trim().toLowerCase();
-    if (raw == 'poids' || raw == 'poids actuel' || raw == 'poids_actuel') {
-      return 'poids';
-    }
-    if (raw == 'taille') return 'taille';
-    if (raw == 'imc') return 'imc';
-    final buffer = StringBuffer();
-    for (final r in raw.runes) {
-      final ch = String.fromCharCode(r);
-      final isLetter = (r >= 48 && r <= 57) || (r >= 97 && r <= 122);
-      if (isLetter) {
-        buffer.write(ch);
-      } else {
-        buffer.write('_');
-      }
-    }
-    final cleaned = buffer.toString().replaceAll(RegExp('_+'), '_');
-    return cleaned.startsWith('_') ? cleaned.substring(1) : cleaned;
-  }
 }
 
 Map<String, String> _fallbackFields(Map<String, dynamic> data) {
   final ignored = {
+    'id',
     'type',
     'sections',
     'createdAt',
@@ -3555,6 +2309,150 @@ Map<String, String> _fallbackFields(Map<String, dynamic> data) {
     result[key] = v;
   });
   return result;
+}
+
+/// Carte des informations médicales du patient : allergies, groupe
+/// sanguin, sexe, adresse, contact d'urgence.
+///
+/// Les allergies s'affichent à part, dans une bannière colorée — c'est une
+/// information de sécurité, elle doit sauter aux yeux, pas se lire comme
+/// une ligne parmi d'autres dans une grille grise.
+class _InfosMedicalesCard extends StatelessWidget {
+  final String sexe;
+  final String groupeSanguin;
+  final String adresse;
+  final String allergies;
+  final String contactUrgenceNom;
+  final String contactUrgenceTel;
+  final VoidCallback onModifier;
+
+  const _InfosMedicalesCard({
+    required this.sexe,
+    required this.groupeSanguin,
+    required this.adresse,
+    required this.allergies,
+    required this.contactUrgenceNom,
+    required this.contactUrgenceTel,
+    required this.onModifier,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final corail = AppTheme.corail(context);
+    final contact = [
+      contactUrgenceNom,
+      contactUrgenceTel,
+    ].where((s) => s.isNotEmpty).join(' · ');
+
+    final infos = <InfoPair>[
+      if (sexe.isNotEmpty) InfoPair(label: 'Sexe', value: sexe),
+      if (groupeSanguin.isNotEmpty)
+        InfoPair(
+          label: 'Groupe sanguin',
+          value: groupeSanguin,
+          icon: Icons.bloodtype_outlined,
+        ),
+      if (adresse.isNotEmpty)
+        InfoPair(label: 'Adresse', value: adresse, icon: Icons.home_outlined),
+      if (contact.isNotEmpty)
+        InfoPair(
+          label: 'Contact urgence',
+          value: contact,
+          icon: Icons.emergency_outlined,
+        ),
+    ];
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(AppTheme.rCard),
+        border: Border.all(color: scheme.outline.withValues(alpha: 0.7)),
+        boxShadow: AppTheme.shadow(context, strength: 0.8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Informations médicales',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Modifier',
+                icon: const Icon(Icons.edit_outlined, size: 20),
+                onPressed: onModifier,
+              ),
+            ],
+          ),
+          if (allergies.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: corail.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(AppTheme.rButton),
+                border: Border.all(color: corail.withValues(alpha: 0.45)),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.warning_amber_rounded, color: corail, size: 20),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'ALLERGIES',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.6,
+                            color: corail,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          allergies,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: Color.lerp(corail, scheme.onSurface, 0.2),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          if (infos.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            InfoGrid(items: infos, minColumnWidth: 140),
+          ],
+          if (infos.isEmpty && allergies.isEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Aucune information médicale renseignée.',
+              style: TextStyle(
+                color: AppTheme.ink2(context),
+                fontStyle: FontStyle.italic,
+                fontSize: 13,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 }
 
 class _PatientHeader extends StatelessWidget {
@@ -3890,7 +2788,6 @@ class _MetricCard extends StatelessWidget {
   }
 }
 
-
 String _formatDateHeader(dynamic ts) {
   final d = asDateOrNull(ts);
   if (d == null) return ts?.toString() ?? '';
@@ -3933,9 +2830,11 @@ Widget _renderFormGroups(
   // presents dans les donnees importees.
   final sorted = [...docs]
     ..sort((a, b) {
-      final at = asDateOrNull(a['createdAt']) ??
+      final at =
+          asDateOrNull(a['createdAt']) ??
           DateTime.fromMillisecondsSinceEpoch(0);
-      final bt = asDateOrNull(b['createdAt']) ??
+      final bt =
+          asDateOrNull(b['createdAt']) ??
           DateTime.fromMillisecondsSinceEpoch(0);
       return bt.compareTo(at);
     });
@@ -4249,8 +3148,7 @@ Widget _renderFormGroups(
       emptyLabel: type.libelle,
       // Une ordonnance et un bilan sont des pieces remises au patient : les
       // rouvrir apres coup ferait diverger le papier et le dossier.
-      allowEdit:
-          type != TypeDocument.ordonnance && type != TypeDocument.bilan,
+      allowEdit: type != TypeDocument.ordonnance && type != TypeDocument.bilan,
       metaLine: _formMetaLine(data),
     );
   }
@@ -4279,7 +3177,9 @@ Widget _renderFormGroups(
               child: Theme(
                 // ExpansionTile trace ses propres lignes de separation, qui
                 // doublent la bordure de la carte.
-                data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                data: Theme.of(
+                  context,
+                ).copyWith(dividerColor: Colors.transparent),
                 child: ExpansionTile(
                   // La visite la plus recente est ouverte : c'est celle qu'on
                   // vient chercher neuf fois sur dix.
@@ -4290,9 +3190,7 @@ Widget _renderFormGroups(
                   ),
                   childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
                   title: _EnteteVisite(visite: visites[i]),
-                  children: [
-                    for (final d in visites[i].documents) carteDe(d),
-                  ],
+                  children: [for (final d in visites[i].documents) carteDe(d)],
                 ),
               ),
             ),
@@ -4458,53 +3356,8 @@ Map<String, String> _patientBasics(
   return result;
 }
 
-class _OrdonnanceLine {
-  final TextEditingController nameCtrl;
-  final TextEditingController qteCtrl;
-  bool checked;
-
-  _OrdonnanceLine({String name = '', String qte = '', this.checked = true})
-    : nameCtrl = TextEditingController(text: name),
-      qteCtrl = TextEditingController(text: qte);
-
-  Map<String, dynamic> toMap() {
-    return {
-      'name': nameCtrl.text.trim(),
-      'qte': qteCtrl.text.trim(),
-      'checked': checked,
-    };
-  }
-
-  void dispose() {
-    nameCtrl.dispose();
-    qteCtrl.dispose();
-  }
-}
-
-class _BilanLine {
-  final TextEditingController nameCtrl;
-  bool checked;
-
-  _BilanLine({String name = '', this.checked = true})
-    : nameCtrl = TextEditingController(text: name);
-
-  Map<String, dynamic> toMap() {
-    return {'name': nameCtrl.text.trim(), 'checked': checked};
-  }
-
-  void dispose() {
-    nameCtrl.dispose();
-  }
-}
-
-class _PdfFonts {
-  final pw.Font base;
-  final pw.Font bold;
-  final pw.Font arabic;
-
-  const _PdfFonts({
-    required this.base,
-    required this.bold,
-    required this.arabic,
-  });
+class _DossierTab {
+  final IconData icon;
+  final String label;
+  const _DossierTab(this.icon, this.label);
 }

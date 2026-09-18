@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/stats_service.dart';
 import '../ui/fluent_card.dart';
 import '../ui/fluent_theme.dart';
+import '../ui/app_theme.dart';
 import '../core/coerce.dart';
 
 class StatsPage extends StatelessWidget {
@@ -68,13 +69,13 @@ class StatsPage extends StatelessWidget {
     final subtitle =
         '${versementsCount == 1 ? "1 versement" : "$versementsCount versements"} - ${achatsCount == 1 ? "1 achat" : "$achatsCount achats"}';
 
-    return Container(
+    final scheme = Theme.of(context).colorScheme;
+    final ink1 = AppTheme.ink1(context);
+    final ink2 = AppTheme.ink2(context);
+    final menthe = AppTheme.menthe(context);
+    final isPositive = net >= 0;
+    return FluentCard(
       padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        gradient: FluentTheme.appBarGradient(context),
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: [FluentTheme.softShadow(context)],
-      ),
       child: Row(
         children: [
           Expanded(
@@ -82,44 +83,47 @@ class StatsPage extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Resume du jour',
+                  'Résumé du jour',
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.92),
-                    fontWeight: FontWeight.w700,
-                    fontSize: 15,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'DA ${_formatMoney(net)}',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 26,
+                    color: ink2,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12,
+                    letterSpacing: 0.2,
                   ),
                 ),
                 const SizedBox(height: 6),
                 Text(
+                  'DA ${_formatMoney(net)}',
+                  style: AppTheme.mono(context, size: 26, weight: FontWeight.w700,
+                      color: isPositive ? menthe : AppTheme.corail(context)),
+                ),
+                const SizedBox(height: 6),
+                Text(
                   subtitle,
-                  style: TextStyle(color: Colors.white.withOpacity(0.86), fontSize: 12),
+                  style: TextStyle(color: ink2, fontSize: 12),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   'Versements: DA ${_formatMoney(versementsTotal)}   Achats: DA ${_formatMoney(achatsTotal)}',
-                  style: TextStyle(color: Colors.white.withOpacity(0.75), fontSize: 12),
+                  style: TextStyle(color: AppTheme.ink3(context), fontSize: 11),
                 ),
               ],
             ),
           ),
           const SizedBox(width: 12),
           Container(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.16),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.white.withOpacity(0.2)),
+              color: (isPositive ? menthe : AppTheme.corail(context))
+                  .withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(AppTheme.rButton),
+              border: Border.all(
+                color: (isPositive ? menthe : AppTheme.corail(context))
+                    .withValues(alpha: 0.30),
+              ),
             ),
-            child: Icon(netIcon, color: Colors.white, size: 24),
+            child: Icon(netIcon,
+                color: isPositive ? menthe : AppTheme.corail(context), size: 22),
           ),
         ],
       ),

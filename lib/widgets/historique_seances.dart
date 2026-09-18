@@ -29,7 +29,33 @@ class Seance {
   /// de les afficher vides, mais sans y chercher les mesures : deviner un
   /// poids dans du texte libre finirait par produire un chiffre faux, et un
   /// chiffre faux sur un dossier médical est pire qu'un chiffre absent.
+  ///
+  /// Un « Formulaire médecin » range tout sous `sections` (clés normalisées
+  /// `poids`/`taille`/`imc`, plus les champs propres au motif) au lieu des
+  /// champs plats `poids`/`taille`/`imc`/`notes` — c'est pourtant là que la
+  /// plupart des mesures sont saisies en pratique, pas dans l'étape « Examen »
+  /// de la consultation guidée, qui reste souvent vide.
   factory Seance.fromForm(Map<String, dynamic> data) {
+    if (asText(data['type']) == 'Formulaire medecin') {
+      final sections =
+          (data['sections'] as Map?)?.cast<String, dynamic>() ?? const {};
+      final autres = sections.entries
+          .where(
+            (e) =>
+                !{'poids', 'taille', 'imc'}.contains(e.key) &&
+                e.value.toString().trim().isNotEmpty,
+          )
+          .map((e) => '${fmt.capitalize(fmt.humanize(e.key))} : ${e.value}')
+          .join('\n');
+      return Seance(
+        date: asDateOrNull(data['createdAt']),
+        poids: asDoubleOrNull(sections['poids']),
+        taille: asDoubleOrNull(sections['taille']),
+        imc: asText(sections['imc']),
+        notes: autres,
+      );
+    }
+
     final notes = asTextOrNull(data['notes']);
     return Seance(
       date: asDateOrNull(data['createdAt']),
@@ -94,9 +120,10 @@ class HistoriqueSeances extends StatelessWidget {
           );
         }
 
+        const typesSeance = {'Consultation', 'Formulaire medecin'};
         final seances =
             snap.data!
-                .where((d) => asText(d['type']) == 'Consultation')
+                .where((d) => typesSeance.contains(asText(d['type'])))
                 .map(Seance.fromForm)
                 .where((s) => !s.estVide)
                 .toList()

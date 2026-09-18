@@ -1,0 +1,169 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif; background: #FFFFFF; color: #10171A; -webkit-font-smoothing: antialiased; }
+    a { color: #0E7C6B; text-decoration: none; }
+    a:hover { color: #0A5C50; }
+    .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+    .ar { font-family: "IBM Plex Sans Arabic", "IBM Plex Sans", sans-serif; direction: rtl; }
+
+    @keyframes rise { from { opacity: 0; transform: translateY(9px); } to { opacity: 1; transform: none; } }
+    .rise { animation: rise .5s cubic-bezier(.22,.8,.3,1) both; }
+
+    /* Étiquette de section : 12px, le plancher pour du texte accessoire. */
+    .lbl { font-size: 12px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: #5A686D; }
+  </style>
+</helmet>
+
+<!-- A4 à 96 px/pouce : 794 × 1123 -->
+<div style="width: 794px; height: 1123px; background: #FFFFFF; padding: 52px 56px 44px; display: flex; flex-direction: column; position: relative; overflow: hidden;">
+
+  <!-- Filet de tête : assez épais pour survivre à l'impression -->
+  <div style="position: absolute; top: 0; left: 0; right: 0; height: 4px; background: #0E7C6B;"></div>
+
+  <!-- ── En-tête bilingue ─────────────────────────────── -->
+  <header class="rise" style="display: flex; align-items: flex-start; gap: 24px; padding-bottom: 18px; border-bottom: 1.5px solid #D9E2E4;">
+
+    <div style="flex: 1; min-width: 0;">
+      <div style="font-size: 19px; font-weight: 600; letter-spacing: -.01em; color: #10171A;">Dr. Meriem Belkaid</div>
+      <div style="font-size: 14px; color: #0E7C6B; font-weight: 500; margin-top: 3px;">Médecin nutritionniste</div>
+      <div style="font-size: 12.5px; color: #5A686D; margin-top: 9px; line-height: 1.65;">
+        12, rue des Frères Boudjemaa<br>
+        Hydra — Alger
+      </div>
+      <div class="mono" style="font-size: 12.5px; color: #5A686D; margin-top: 5px;">023 54 18 07</div>
+    </div>
+
+    <div style="width: 42px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; padding-top: 4px;">
+      <div style="width: 34px; height: 34px; border-radius: 9px; background: #0E7C6B; display: flex; align-items: center; justify-content: center;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg>
+      </div>
+    </div>
+
+    <div class="ar" style="flex: 1; min-width: 0; text-align: left;">
+      <div style="font-size: 19px; font-weight: 600; color: #10171A;">د. مريم بلقايد</div>
+      <div style="font-size: 14px; color: #0E7C6B; font-weight: 500; margin-top: 3px;">طبيبة أخصائية في التغذية</div>
+      <div style="font-size: 12.5px; color: #5A686D; margin-top: 9px; line-height: 1.75;">
+        12، شارع الإخوة بوجمعة<br>
+        حيدرة — الجزائر العاصمة
+      </div>
+      <div class="mono" style="font-size: 12.5px; color: #5A686D; margin-top: 5px; direction: ltr; text-align: left;">023 54 18 07</div>
+    </div>
+  </header>
+
+  <!-- ── Patient et date ──────────────────────────────── -->
+  <div class="rise" style="display: flex; align-items: flex-end; gap: 20px; padding: 20px 0 18px; border-bottom: 1px solid #E8EEEF; animation-delay: .06s">
+    <div style="flex: 1;">
+      <div class="lbl" style="margin-bottom: 6px;">Patient</div>
+      <div style="font-size: 17px; font-weight: 600; letter-spacing: -.01em;">Benali Yacine</div>
+      <div style="font-size: 13px; color: #5A686D; margin-top: 3px;">34 ans — 84,2 kg — IMC 27,4</div>
+    </div>
+    <div style="text-align: right;">
+      <div class="lbl" style="margin-bottom: 6px;">Date</div>
+      <div class="mono" style="font-size: 14px; font-weight: 500;">13 / 09 / 2026</div>
+    </div>
+    <div style="text-align: right;">
+      <div class="lbl" style="margin-bottom: 6px;">N°</div>
+      <div class="mono" style="font-size: 14px; font-weight: 500; color: #0E7C6B;">ORD-0143</div>
+    </div>
+  </div>
+
+  <!-- ── Titre ────────────────────────────────────────── -->
+  <div class="rise" style="display: flex; align-items: baseline; justify-content: space-between; padding: 26px 0 18px; animation-delay: .12s">
+    <h1 style="font-size: 23px; font-weight: 700; letter-spacing: .02em; text-transform: uppercase; margin: 0; color: #10171A;">Ordonnance</h1>
+    <span class="ar" style="font-size: 23px; font-weight: 600; color: #10171A;">وصفة طبية</span>
+  </div>
+
+  <!-- ── Prescriptions ────────────────────────────────── -->
+  <div style="display: flex; flex-direction: column; gap: 20px;">
+    <sc-for list="{{ lignes }}" as="l" hint-placeholder-count="3">
+      <div class="rise" style="display: flex; gap: 15px; animation-delay: {{ l.delay }};">
+        <div class="mono" style="width: 26px; height: 26px; border-radius: 7px; flex-shrink: 0; background: #E6F2EF; color: #0E7C6B; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600;">{{ l.num }}</div>
+        <div style="flex: 1; min-width: 0; padding-bottom: 18px; border-bottom: 1px solid #EDF2F3;">
+          <div style="font-size: 16px; font-weight: 600; letter-spacing: -.01em;">{{ l.produit }}</div>
+          <div style="font-size: 14px; color: #35464B; margin-top: 5px; line-height: 1.55;">{{ l.posologie }}</div>
+          <div style="display: flex; align-items: center; gap: 9px; margin-top: 8px;">
+            <span class="mono" style="font-size: 12px; color: #0E7C6B; background: #E6F2EF; padding: 3px 9px; border-radius: 999px; font-weight: 500;">{{ l.duree }}</span>
+            <span style="font-size: 12.5px; color: #5A686D;">{{ l.note }}</span>
+          </div>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+
+  <!-- ── Conseils ─────────────────────────────────────── -->
+  <div class="rise" style="margin-top: 26px; padding: 16px 18px; border-radius: 9px; background: #F5F9F9; border: 1px solid #E1EAEB; animation-delay: .3s">
+    <div class="lbl" style="margin-bottom: 9px;">Conseils</div>
+    <div style="font-size: 14px; line-height: 1.7; color: #24343A;">
+      Poursuivre le protocole alimentaire remis en séance. Marche rapide 30 minutes,
+      cinq jours par semaine. Contrôle du poids une fois par semaine, à jeun.
+    </div>
+  </div>
+
+  <!-- ── Pied : signature ─────────────────────────────── -->
+  <div style="margin-top: auto; padding-top: 30px;">
+    <div class="rise" style="display: flex; align-items: flex-end; justify-content: space-between; animation-delay: .36s">
+      <div>
+        <div class="lbl" style="margin-bottom: 7px;">Prochain rendez-vous</div>
+        <div class="mono" style="font-size: 14px; font-weight: 500;">27 / 09 / 2026 — 14:30</div>
+      </div>
+      <div style="text-align: center; width: 210px;">
+        <div style="height: 56px;"></div>
+        <div style="border-top: 1.5px solid #B9C7CA; padding-top: 8px;">
+          <div style="font-size: 13px; font-weight: 600;">Signature et cachet</div>
+          <div class="ar" style="font-size: 12.5px; color: #5A686D; margin-top: 2px;">الإمضاء والختم</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 26px; padding-top: 14px; border-top: 1px solid #E8EEEF;">
+      <span class="mono" style="font-size: 11.5px; color: #7A888D;">Cabinet Belkaid — Hydra, Alger</span>
+      <span class="mono" style="font-size: 11.5px; color: #7A888D;">ORD-0143 — page 1/1</span>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":794,"height":1123}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const lignes = [
+      {
+        produit: 'Vitamine D3 — 1 000 UI',
+        posologie: 'Une ampoule buvable par semaine, le matin à jeun.',
+        duree: '8 semaines',
+        note: 'Carence confirmée au bilan du 14 août',
+      },
+      {
+        produit: 'Magnésium marin — 300 mg',
+        posologie: 'Une gélule le soir, au cours du repas.',
+        duree: '30 jours',
+        note: 'À renouveler si crampes persistantes',
+      },
+      {
+        produit: 'Oméga 3 — EPA / DHA',
+        posologie: 'Une capsule matin et soir, pendant les repas.',
+        duree: '30 jours',
+        note: '',
+      },
+    ].map((l, i) => ({
+      ...l,
+      num: String(i + 1).padStart(2, '0'),
+      delay: (0.16 + i * 0.06).toFixed(3) + 's',
+    }));
+
+    return { lignes };
+  }
+}
+</script>
+</body>
+</html>

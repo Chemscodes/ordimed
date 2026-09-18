@@ -1,8 +1,5 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'app_theme.dart';
-import 'fluent_theme.dart';
 import 'fluent_button.dart';
 import '../widgets/theme_toggle.dart';
 
@@ -28,98 +25,27 @@ class AppShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: scheme.surface,
-      body: Stack(
+      backgroundColor: AppTheme.pageBg(context),
+      body: Column(
         children: [
-          // Fond : dégradé de marque, profond et saturé.
-          Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Color.lerp(scheme.primary, Colors.black, 0.34)!,
-                  Color.lerp(scheme.primary, Colors.black, 0.62)!,
-                  const Color(0xFF04141A),
-                ],
-                stops: const [0, 0.45, 1],
-              ),
+          _TopBar(title: title, actions: actions, topActions: topActions),
+          if (navItems.isNotEmpty)
+            _TabBarModern(
+              items: navItems,
+              currentIndex: currentIndex,
+              onTap: onNav,
             ),
-          ),
-          // Halo chaud en haut à droite : donne une source de lumière.
-          Positioned.fill(
-            child: IgnorePointer(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: RadialGradient(
-                    center: const Alignment(0.85, -0.9),
-                    radius: 1.15,
-                    colors: [
-                      scheme.secondary.withValues(alpha: 0.34),
-                      Colors.transparent,
-                    ],
-                  ),
-                ),
-              ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: child,
             ),
-          ),
-          Positioned(
-            top: -70,
-            right: -50,
-            child: IgnorePointer(
-              child: _blurCircle(
-                scheme.primary.withValues(alpha: 0.42),
-                260,
-              ),
-            ),
-          ),
-          Positioned(
-            bottom: -60,
-            left: -70,
-            child: IgnorePointer(
-              child: _blurCircle(
-                scheme.tertiary.withValues(alpha: 0.26),
-                220,
-              ),
-            ),
-          ),
-          Column(
-            children: [
-              _TopBar(title: title, actions: actions, topActions: topActions),
-              if (navItems.isNotEmpty)
-                _TabBarModern(
-                  items: navItems,
-                  currentIndex: currentIndex,
-                  onTap: onNav,
-                ),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: child,
-                ),
-              ),
-            ],
           ),
         ],
       ),
     );
   }
-}
-
-Widget _blurCircle(Color color, double size) {
-  return Container(
-    width: size,
-    height: size,
-    decoration: BoxDecoration(
-      shape: BoxShape.circle,
-      color: color,
-      boxShadow: [
-        BoxShadow(color: color, blurRadius: size / 2, spreadRadius: size / 4),
-      ],
-    ),
-  );
 }
 
 class _TopBar extends StatelessWidget {
@@ -192,23 +118,29 @@ class _TopBar extends StatelessWidget {
           );
         });
       },
-      child: Container(
-        padding: EdgeInsets.symmetric(horizontal: compact ? 12 : 14, vertical: compact ? 10 : 12),
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.12),
-          borderRadius: BorderRadius.circular(FluentTheme.buttonRadius),
-          border: Border.all(color: Colors.white.withOpacity(0.2)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.more_horiz, color: Colors.white, size: 18),
-            if (!compact) ...[
-              const SizedBox(width: 6),
-              const Text('Plus', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-            ],
-          ],
-        ),
+      child: Builder(
+        builder: (context) {
+          final scheme = Theme.of(context).colorScheme;
+          final ink = AppTheme.ink1(context);
+          return Container(
+            padding: EdgeInsets.symmetric(horizontal: compact ? 12 : 14, vertical: compact ? 10 : 12),
+            decoration: BoxDecoration(
+              color: AppTheme.raised(context),
+              borderRadius: BorderRadius.circular(AppTheme.rButton),
+              border: Border.all(color: scheme.outline),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.more_horiz, color: ink, size: 18),
+                if (!compact) ...[
+                  const SizedBox(width: 6),
+                  Text('Plus', style: TextStyle(color: ink, fontWeight: FontWeight.w600)),
+                ],
+              ],
+            ),
+          );
+        },
       ),
     );
   }
@@ -262,91 +194,70 @@ class _TopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final ink = AppTheme.ink1(context);
     final titleStyle = Theme.of(context).textTheme.titleLarge?.copyWith(
-          color: Colors.white,
+          color: ink,
           fontWeight: FontWeight.w700,
-          letterSpacing: 0.2,
+          letterSpacing: 0,
         );
-    final shell = Container(
+    return Container(
       margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-          child: Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  Colors.white.withOpacity(0.14),
-                  Colors.white.withOpacity(0.06),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white.withOpacity(0.18)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.18),
-                  blurRadius: 20,
-                  offset: const Offset(0, 10),
-                ),
-              ],
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final isNarrow = constraints.maxWidth < 980;
-                if (isNarrow) {
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              title,
-                              style: titleStyle,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const ThemeToggle(),
-                              ...actions,
-                            ],
-                          ),
-                        ],
-                      ),
-                      if (topActions.isNotEmpty) ...[
-                        const SizedBox(height: 10),
-                        _buildNarrowActions(context, constraints.maxWidth),
-                      ],
-                    ],
-                  );
-                }
-                return Row(
+      decoration: BoxDecoration(
+        color: AppTheme.panel(context),
+        borderRadius: BorderRadius.circular(AppTheme.rCard),
+        border: Border.all(color: scheme.outline),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final isNarrow = constraints.maxWidth < 980;
+          if (isNarrow) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   children: [
-                    ConstrainedBox(
-                      constraints: BoxConstraints(maxWidth: constraints.maxWidth * 0.35),
+                    Expanded(
                       child: Text(
                         title,
                         style: titleStyle,
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(child: _buildWideActions(context)),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const ThemeToggle(),
+                        ...actions,
+                      ],
+                    ),
                   ],
-                );
-              },
-            ),
-          ),
-        ),
+                ),
+                if (topActions.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  _buildNarrowActions(context, constraints.maxWidth),
+                ],
+              ],
+            );
+          }
+          return Row(
+            children: [
+              ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: constraints.maxWidth * 0.35),
+                child: Text(
+                  title,
+                  style: titleStyle,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(child: _buildWideActions(context)),
+            ],
+          );
+        },
       ),
     );
-    return shell;
   }
 }
 
@@ -398,12 +309,12 @@ class _TabBarModern extends StatelessWidget {
     );
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.10),
+        color: AppTheme.panel(context),
         borderRadius: BorderRadius.circular(AppTheme.rPill),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
+        border: Border.all(color: scheme.outline),
       ),
       // Défilement horizontal : avec beaucoup d'onglets ou une fenêtre
       // étroite, la barre glisse au lieu de déborder.
@@ -440,6 +351,9 @@ class _TabState extends State<_Tab> {
   Widget build(BuildContext context) {
     final s = widget.scheme;
     final sel = widget.selected;
+    final ink1 = AppTheme.ink1(context);
+    final ink2 = AppTheme.ink2(context);
+    final hover = AppTheme.hover(context);
 
     return MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -450,39 +364,24 @@ class _TabState extends State<_Tab> {
         child: AnimatedContainer(
           duration: AppTheme.mid,
           curve: AppTheme.ease,
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           decoration: BoxDecoration(
-            gradient: sel
-                ? LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [s.primary, Color.lerp(s.primary, s.secondary, 0.6)!],
-                  )
-                : null,
             color: sel
-                ? null
-                : Colors.white.withValues(alpha: _hover ? 0.12 : 0.0),
+                ? s.primary.withValues(alpha: 0.15)
+                : _hover ? hover : Colors.transparent,
             borderRadius: BorderRadius.circular(AppTheme.rPill),
-            boxShadow: sel
-                ? [
-                    BoxShadow(
-                      color: s.primary.withValues(alpha: 0.45),
-                      blurRadius: 18,
-                      offset: const Offset(0, 6),
-                    ),
-                  ]
-                : const [],
+            border: sel
+                ? Border.all(color: s.primary.withValues(alpha: 0.40))
+                : null,
           ),
           child: AnimatedDefaultTextStyle(
             duration: AppTheme.mid,
             curve: AppTheme.ease,
             style: TextStyle(
-              color: sel
-                  ? Colors.white
-                  : Colors.white.withValues(alpha: _hover ? 0.95 : 0.72),
-              fontWeight: sel ? FontWeight.w800 : FontWeight.w600,
-              fontSize: 14.5,
-              letterSpacing: sel ? 0.1 : 0,
+              color: sel ? s.primary : (_hover ? ink1 : ink2),
+              fontWeight: sel ? FontWeight.w600 : FontWeight.w500,
+              fontSize: 13,
+              letterSpacing: 0,
             ),
             child: Text(
               widget.label,

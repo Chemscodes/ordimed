@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../services/api_client.dart';
 import '../services/api_service.dart';
+import '../ui/app_theme.dart';
 import '../ui/fluent_card.dart';
 import '../ui/fluent_button.dart';
 
@@ -58,49 +59,12 @@ class _AddProfilePageState extends State<AddProfilePage> {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
+      backgroundColor: AppTheme.pageBg(context),
       appBar: AppBar(
-        elevation: 0,
-        backgroundColor: Colors.transparent,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () {
-            if (Navigator.canPop(context)) Navigator.pop(context);
-          },
-        ),
         title: const Text('Créer un profil'),
-        flexibleSpace: Container(
-          margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [scheme.primary, scheme.secondary],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(18),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.12),
-                blurRadius: 18,
-                offset: const Offset(0, 8),
-              ),
-            ],
-          ),
-        ),
       ),
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              scheme.primary.withOpacity(0.05),
-              scheme.secondary.withOpacity(0.05),
-            ],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ),
-        ),
-        child: Center(
+      body: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 520),
             child: FluentCard(
@@ -145,7 +109,6 @@ class _AddProfilePageState extends State<AddProfilePage> {
             ),
           ),
         ),
-      ),
     );
   }
 }

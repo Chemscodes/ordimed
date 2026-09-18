@@ -1,0 +1,54 @@
+{
+  "pages": [
+    { "id": "page-1", "name": "Les trois postes" },
+    { "id": "page-2", "name": "Dossier et séance" },
+    { "id": "page-3", "name": "Entrée et système" }
+  ],
+  "artboards": [
+    { "file": "Main.dc.html",         "page": "page-1", "x": 0,    "y": 0, "w": 1440, "h": 900, "title": "Poste médecin",    "is_interactive": true },
+    { "file": "Assistant.dc.html",    "page": "page-1", "x": 1540, "y": 0, "w": 1440, "h": 900, "title": "Poste assistant",  "is_interactive": true },
+    { "file": "Directeur.dc.html",    "page": "page-1", "x": 3080, "y": 0, "w": 1440, "h": 900, "title": "Poste direction",  "is_interactive": true },
+
+    { "file": "Dossier.dc.html",      "page": "page-2", "x": 0,    "y": 0, "w": 1440, "h": 900,  "title": "Dossier patient",   "is_interactive": true },
+    { "file": "Consultation.dc.html", "page": "page-2", "x": 1540, "y": 0, "w": 1440, "h": 900,  "title": "Séance en cours",   "is_interactive": true },
+    { "file": "Ordonnance.dc.html",   "page": "page-2", "x": 3080, "y": 0, "w": 794,  "h": 1123, "title": "Ordonnance A4",     "print": "fixed" },
+
+    { "file": "Connexion.dc.html",    "page": "page-3", "x": 0,    "y": 0, "w": 1440, "h": 900,  "title": "Choix du poste",    "is_interactive": true },
+    { "file": "Systeme.dc.html",      "page": "page-3", "x": 1540, "y": 0, "w": 1200, "h": 1240, "title": "Le système" }
+  ],
+  "annotations": [
+    {
+      "id": "note-direction",
+      "page": "page-1",
+      "x": 0,
+      "y": -150,
+      "w": 620,
+      "text": "Direction : poste de travail sombre, dense, chrome discret — Raycast et Figma desktop.\n\nCe qui disparaît du thème actuel : le dégradé turquoise saturé, le halo chaud et les deux cercles flous. Ils se battaient contre les données.\n\nCliquez une ligne de la file : le panneau de droite suit."
+    },
+    {
+      "id": "note-visites",
+      "page": "page-2",
+      "x": 0,
+      "y": -150,
+      "w": 620,
+      "text": "Le dossier se lit par visite, comme lib/core/visite.dart le modélise déjà : consultation, ordonnance et bilan du même jour forment un tout. Cliquez une visite pour la déplier.\n\nSur la séance, les boutons ± du poids recalculent l'IMC en direct — et la couleur bascule au passage des seuils 25 et 30."
+    },
+    {
+      "id": "note-ordonnance",
+      "page": "page-2",
+      "x": 3080,
+      "y": -150,
+      "w": 560,
+      "text": "L'ordonnance est la seconde face du système : imprimée, donc claire. A4 à 96 px/pouce, corps à 14-16 px (le plancher des 12 pt), en-tête bilingue FR/AR en IBM Plex Sans Arabic.\n\nAucun aplat sombre : le papier ne doit pas boire l'encre."
+    },
+    {
+      "id": "note-systeme",
+      "page": "page-3",
+      "x": 1540,
+      "y": -150,
+      "w": 560,
+      "text": "Les jetons à porter dans lib/ui/app_theme.dart. Les écarts avec le thème actuel sont listés en bas de l'artboard.\n\nLes teintes de graphique sont distinctes des accents d'interface : validées pour le daltonisme et le contraste sur fond sombre."
+    }
+  ],
+  "launch": { "view": "canvas", "page": "page-1" }
+}

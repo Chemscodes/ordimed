@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(powershell -c \"\\(Get-Content -Raw 'D:\\\\ordimed\\\\lib\\\\pages\\\\dashboard_assistant.dart'\\).Split\\(\\\\\"\\\\`n\\\\\"\\).Count\")",
+      "Bash(flutter analyze *)",
+      "PowerShell(Get-Process -Name ordimed -ErrorAction SilentlyContinue)",
+      "Bash(flutter run *)",
+      "Read(//c/Users/zaouali/AppData/Local/Pub/Cache/hosted/pub.dev/firebase_core-4.15.0/windows/**)",
+      "Read(//c/Users/zaouali/AppData/Local/Pub/Cache/hosted/pub.dev/firebase_storage-13.6.0/windows/**)",
+      "WebFetch(domain:github.com)",
+      "PowerShell(Get-Process -Name ordimed)",
+      "Bash(awk 'NR==647,NR==850' lib/pages/ordonnance_page.dart)",
+      "Bash(grep -n \"^  }$\")",
+      "Bash(dart format *)",
+      "Bash(grep -rln \"PdfGoogleFonts\" \"/c/Users/zaouali/AppData/Local/Pub/Cache/hosted/pub.dev/printing-5.14.2/lib\" 2>/dev/null)",
+      "Read(//c/Users/zaouali/AppData/Local/Pub/Cache/hosted/pub.dev/printing-5.14.2/lib/**)",
+      "Bash(grep -n \"static Future<Font> iBMPlexSans\\\\|static Future<Font> iBMPlexMono\\\\|static Future<Font> notoNaskhArabic\\\\|iBMPlexSansArabic\" \"/c/Users/zaouali/AppData/Local/Pub/Cache/hosted/pub.dev/printing-5.14.2/lib/src/fonts/gfonts.dart\" | head -30)",
+      "Read(//c/Users/zaouali/AppData/Local/Pub/Cache/hosted/pub.dev/printing-5.14.2/lib/src/fonts/**)",
+      "Read(//c/Users/zaouali/AppData/Local/Pub/Cache/hosted/pub.dev/**)",
+      "Read(//c/Users/zaouali/AppData/Local/Pub/Cache/hosted/pub.dev/pdf-3.11.3/lib/src/pdf/**)",
+      "Bash(grep -n \"factory PdfColor\" \"/c/Users/zaouali/AppData/Local/Pub/Cache/hosted/pub.dev/pdf-3.11.3/lib/src/pdf/color.dart\")"
+    ]
+  }
+}

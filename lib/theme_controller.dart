@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 class ThemeController {
-  static final ValueNotifier<ThemeMode> mode = ValueNotifier(ThemeMode.system);
+  static final ValueNotifier<ThemeMode> mode = ValueNotifier(ThemeMode.dark);
 
   static void toggle() {
     mode.value =

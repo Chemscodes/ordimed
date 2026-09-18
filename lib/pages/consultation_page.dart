@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'patient_details_page.dart';
 import '../core/clinical.dart';
 import '../core/coerce.dart';
+import '../core/doctor_form_prototype.dart';
 import '../core/format.dart' as fmt;
 import '../core/validate.dart' as v;
 import '../services/api_service.dart';
@@ -71,10 +72,14 @@ class ConsultationPage extends StatefulWidget {
 }
 
 /// Documents produits pendant la consultation, avec leur type Firestore.
+///
+/// Le formulaire médecin n'y figure plus : il se remplit désormais à
+/// l'étape « Examen », avec les champs propres au motif du patient — le
+/// proposer une seconde fois ici aurait fait deux formulaires pour la même
+/// visite.
 enum _Livrable {
   ordonnance('Ordonnance medecin', 'Ordonnance', Icons.receipt_long_outlined),
-  bilan('Demande de bilan', 'Demande de bilan', Icons.biotech_outlined),
-  formulaire('Formulaire medecin', 'Formulaire médecin', Icons.assignment_outlined);
+  bilan('Demande de bilan', 'Demande de bilan', Icons.biotech_outlined);
 
   final String typeFirestore;
   final String libelle;
@@ -90,6 +95,13 @@ class _ConsultationPageState extends State<ConsultationPage> {
   final _tailleCtrl = TextEditingController();
   final _imcCtrl = TextEditingController();
   final _observationsCtrl = TextEditingController();
+
+  /// Champs propres au motif du patient (au-delà de Poids/Taille/IMC), une
+  /// fois résolus — `null` tant que le chargement n'est pas terminé. C'est
+  /// le même prototype que le « Formulaire médecin » autonome du dossier :
+  /// une seule saisie clinique par visite, pas deux.
+  List<String>? _champsExtra;
+  final Map<String, TextEditingController> _autresControllers = {};
 
   /// Prix facturé pour cette séance.
   ///
@@ -137,9 +149,39 @@ class _ConsultationPageState extends State<ConsultationPage> {
   String get _patientPrenom => asText(widget.waitingData['patientPrenom']);
 
   @override
+  void initState() {
+    super.initState();
+    _chargerChampsExamen();
+  }
+
+  Future<void> _chargerChampsExamen() async {
+    final champsBruts = await resolveMotifPrototypeFields(widget.waitingData);
+    final champs = ensureVitals(champsBruts);
+    final extra = champs
+        .where(
+          (c) => !{
+            'poids',
+            'taille',
+            'imc',
+          }.contains(normalizeSectionKey(c)),
+        )
+        .toList();
+    if (!mounted) return;
+    setState(() {
+      _champsExtra = extra;
+      for (final f in extra) {
+        _autresControllers[f] = TextEditingController();
+      }
+    });
+  }
+
+  @override
   void dispose() {
     _poidsCtrl.dispose();
     _tailleCtrl.dispose();
+    for (final c in _autresControllers.values) {
+      c.dispose();
+    }
     _imcCtrl.dispose();
     _observationsCtrl.dispose();
     _prixCtrl.dispose();
@@ -177,12 +219,27 @@ class _ConsultationPageState extends State<ConsultationPage> {
   //  Écritures
   // ---------------------------------------------------------------
 
-  /// Enregistre mesures et observations, si quelque chose a été saisi.
+  /// Enregistre mesures, champs propres au motif et observations, si
+  /// quelque chose a été saisi.
+  ///
+  /// Écrit désormais un document `'Formulaire medecin'` — le même format
+  /// que le formulaire autonome du dossier patient, avec les champs sous
+  /// `sections` — au lieu d'un `'Consultation'` séparé : une seule saisie
+  /// clinique par visite, lue par le même historique quel que soit le
+  /// chemin par lequel elle a été remplie.
   Future<void> _enregistrerExamen() async {
     final poids = asDoubleOrNull(_poidsCtrl.text);
     final taille = asDoubleOrNull(_tailleCtrl.text);
     final notes = _observationsCtrl.text.trim();
-    if (poids == null && taille == null && notes.isEmpty) return;
+    final extra = _autresControllers.map(
+      (label, ctrl) => MapEntry(label, ctrl.text.trim()),
+    );
+    final rienDeSaisi =
+        poids == null &&
+        taille == null &&
+        notes.isEmpty &&
+        extra.values.every((v) => v.isEmpty);
+    if (rienDeSaisi) return;
 
     try {
       // Les mesures vont sur le dossier patient, pour que la prochaine
@@ -194,26 +251,20 @@ class _ConsultationPageState extends State<ConsultationPage> {
         'derniereConsultation': DateTime.now().toIso8601String(),
       });
 
-      // Et une trace horodatée dans les documents.
-      //
-      // Les mesures y sont écrites deux fois, et c'est voulu : en champs
-      // typés pour que l'historique les relise sans deviner, et en texte
-      // pour les vues qui affichent `contenu` tel quel. Reparser le texte
-      // aurait suffi jusqu'au jour où quelqu'un change une virgule.
+      final sections = <String, String>{
+        'poids': poids?.toString() ?? '',
+        'taille': taille?.toString() ?? '',
+        'imc': _imcCtrl.text.trim(),
+        for (final entry in extra.entries)
+          normalizeSectionKey(entry.key): entry.value,
+        if (notes.isNotEmpty) 'observations': notes,
+      };
+
       await ApiService.instance.creerDocument({
         'patientId': _patientId,
         'visiteId': _visiteId,
-        'type': 'Consultation',
-        if (poids != null) 'poids': poids,
-        if (taille != null) 'taille': taille,
-        if (_imcCtrl.text.isNotEmpty) 'imc': _imcCtrl.text,
-        if (notes.isNotEmpty) 'notes': notes,
-        'contenu': [
-          if (poids != null) 'Poids : ${poids.toStringAsFixed(1)} kg',
-          if (taille != null) 'Taille : ${taille.toStringAsFixed(0)} cm',
-          if (_imcCtrl.text.isNotEmpty) 'IMC : ${_imcCtrl.text}',
-          if (notes.isNotEmpty) '', if (notes.isNotEmpty) notes,
-        ].join('\n'),
+        'type': 'Formulaire medecin',
+        'sections': sections,
         'auteurProfileId': widget.profileId,
       });
 
@@ -288,26 +339,21 @@ class _ConsultationPageState extends State<ConsultationPage> {
     }
     if (!mounted) return;
 
-    // Ces dialogues sont heberges par le dossier patient — ils tiennent pres
-    // de mille lignes. `PatientDetailsPage` est sans etat : on en construit
-    // une instance sans l'afficher, pour appeler ses dialogues avec le
-    // contexte de cet ecran.
-    final dossierPage = PatientDetailsPage(
-      patientId: _patientId,
-      patientName: '$_patientNom $_patientPrenom'.trim(),
-      parentUid: widget.parentUid,
-      ownerProfileId: widget.profileId,
-      canAddForm: true,
-      canAddDoctorForm: true,
-    );
-
     switch (livrable) {
       case _Livrable.ordonnance:
-        await dossierPage.ouvrirOrdonnance(context, dossier);
+        await PatientDetailsPage.ouvrirOrdonnance(
+          context,
+          ownerProfileId: widget.profileId,
+          patientId: _patientId,
+          patientData: dossier,
+        );
       case _Livrable.bilan:
-        await dossierPage.ouvrirBilan(context, dossier);
-      case _Livrable.formulaire:
-        await dossierPage.ouvrirFormulaireMedecin(context, dossier);
+        await PatientDetailsPage.ouvrirBilan(
+          context,
+          ownerProfileId: widget.profileId,
+          patientId: _patientId,
+          patientData: dossier,
+        );
     }
   }
 
@@ -341,7 +387,7 @@ class _ConsultationPageState extends State<ConsultationPage> {
         elevation: 0,
         backgroundColor: Colors.transparent,
         leading: IconButton(
-          icon: const Icon(Icons.close, color: Colors.white),
+          icon: const Icon(Icons.close),
           tooltip: 'Quitter sans clôturer',
           onPressed: () => Navigator.pop(context),
         ),
@@ -549,6 +595,13 @@ class _ConsultationPageState extends State<ConsultationPage> {
   // ---- Étape 2 : examen ----
 
   Widget _etapeExamen() {
+    final champsExtra = _champsExtra;
+    if (champsExtra == null) {
+      return const Padding(
+        padding: EdgeInsets.all(32),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
     return FluentCard(
       padding: const EdgeInsets.all(18),
       child: Form(
@@ -584,6 +637,16 @@ class _ConsultationPageState extends State<ConsultationPage> {
               tailleCtrl: _tailleCtrl,
               syncTo: _imcCtrl,
             ),
+            // Champs propres au motif du patient — configurés par
+            // l'assistant, les mêmes que ceux du « Formulaire médecin »
+            // autonome. Vide pour un motif sans prototype configuré.
+            for (final champ in champsExtra) ...[
+              const SizedBox(height: 12),
+              TextField(
+                controller: _autresControllers[champ],
+                decoration: InputDecoration(labelText: champ),
+              ),
+            ],
             const SizedBox(height: 14),
             AppField.text(
               controller: _observationsCtrl,

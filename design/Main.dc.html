@@ -1,0 +1,384 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+      background: #0A0C0D;
+      color: #EAEFF1;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: #2FE0BE; text-decoration: none; }
+    a:hover { color: #5FEBD0; }
+
+    .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+
+    /* Une seule révélation orchestrée : les blocs montent en cascade. */
+    @keyframes rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+    .rise { animation: rise .55s cubic-bezier(.22,.8,.3,1) both; }
+
+    /* Le point « en consultation » respire — c'est la seule chose vivante. */
+    @keyframes halo {
+      0%   { box-shadow: 0 0 0 0 rgba(47,224,190,.55); }
+      70%  { box-shadow: 0 0 0 8px rgba(47,224,190,0); }
+      100% { box-shadow: 0 0 0 0 rgba(47,224,190,0); }
+    }
+    .live { animation: halo 2.2s ease-out infinite; }
+
+    @keyframes grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+    .grow { animation: grow .85s cubic-bezier(.22,.8,.3,1) both; transform-origin: left center; }
+
+    .row {
+      display: grid;
+      grid-template-columns: 26px 1fr 132px 74px 96px;
+      align-items: center;
+      gap: 14px;
+      padding: 11px 14px;
+      border-radius: 8px;
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition: background .16s ease, border-color .16s ease, transform .16s ease;
+    }
+    .row:hover { background: #1B2023; border-color: rgba(255,255,255,.07); }
+    .row.on { background: #17211F; border-color: rgba(47,224,190,.32); }
+    .row.on:hover { background: #182421; }
+
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      height: 32px; padding: 0 13px; border-radius: 6px;
+      border: 1px solid rgba(255,255,255,.13);
+      background: #1B2023; color: #EAEFF1;
+      font: 500 12.5px "IBM Plex Sans", sans-serif; cursor: pointer;
+      transition: background .16s ease, border-color .16s ease;
+    }
+    .btn:hover { background: #262D30; border-color: rgba(255,255,255,.2); }
+    .btn.pri { background: #2FE0BE; border-color: #2FE0BE; color: #062B25; font-weight: 600; }
+    .btn.pri:hover { background: #55E8CD; border-color: #55E8CD; }
+
+    .nav {
+      display: flex; align-items: center; gap: 10px;
+      height: 32px; padding: 0 10px; border-radius: 6px;
+      color: #96A1A6; font-size: 13px; cursor: pointer;
+      transition: background .16s ease, color .16s ease;
+    }
+    .nav:hover { background: #1B2023; color: #EAEFF1; }
+    .nav.on { background: #1B2023; color: #EAEFF1; font-weight: 500; }
+    .nav.on svg { color: #2FE0BE; }
+
+    .tile {
+      background: #15191B; border: 1px solid rgba(255,255,255,.07);
+      border-radius: 8px; padding: 13px 15px;
+    }
+    .lbl { font-size: 10.5px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; color: #667276; }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; display: flex; overflow: hidden; background: #0A0C0D;">
+
+  <!-- ── Rail de navigation ─────────────────────────────── -->
+  <aside style="width: 232px; flex-shrink: 0; background: #101315; border-right: 1px solid rgba(255,255,255,.07); display: flex; flex-direction: column;">
+
+    <div style="height: 52px; display: flex; align-items: center; gap: 9px; padding: 0 16px; border-bottom: 1px solid rgba(255,255,255,.07);">
+      <div style="width: 22px; height: 22px; border-radius: 6px; background: #2FE0BE; display: flex; align-items: center; justify-content: center;">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#062B25" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg>
+      </div>
+      <span style="font-size: 14px; font-weight: 600; letter-spacing: -.01em;">Ordimed</span>
+    </div>
+
+    <nav style="padding: 14px 10px; display: flex; flex-direction: column; gap: 2px;">
+      <div class="lbl" style="padding: 0 10px 8px;">Consultation</div>
+      <div class="nav on rise" style="animation-delay: .02s">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M17 9h4M19 7v4"/></svg>
+        File d'attente
+        <span class="mono" style="margin-left: auto; font-size: 11px; background: #2FE0BE; color: #062B25; padding: 1px 6px; border-radius: 999px; font-weight: 600;">5</span>
+      </div>
+      <div class="nav rise" style="animation-delay: .05s">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.2"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>
+        Mes patients
+      </div>
+      <div class="nav rise" style="animation-delay: .08s">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2.5"/><path d="M8 3v4M16 3v4M3 10h18"/></svg>
+        Rendez-vous
+      </div>
+      <div class="nav rise" style="animation-delay: .11s">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 13h6M9 17h4"/></svg>
+        Documents
+      </div>
+
+      <div class="lbl" style="padding: 18px 10px 8px;">Cabinet</div>
+      <div class="nav rise" style="animation-delay: .14s">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V9M10 19V5M16 19v-6M22 19H2"/></svg>
+        Statistiques
+      </div>
+      <div class="nav rise" style="animation-delay: .17s">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 14a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1v.3a2 2 0 1 1-4 0v-.2a1.6 1.6 0 0 0-2.8-1.1l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0-1.1-2.7H3a2 2 0 1 1 0-4h.2A1.6 1.6 0 0 0 4.3 6.7l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.2a1.6 1.6 0 0 0 2.7 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1h.3a2 2 0 1 1 0 4h-.2a1.6 1.6 0 0 0-1.4 1z"/></svg>
+        Réglages
+      </div>
+    </nav>
+
+    <!-- Profil, ancré en bas -->
+    <div style="margin-top: auto; padding: 12px; border-top: 1px solid rgba(255,255,255,.07);">
+      <div style="display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 7px; background: #15191B; border: 1px solid rgba(255,255,255,.06);">
+        <div class="mono" style="width: 28px; height: 28px; border-radius: 7px; background: linear-gradient(135deg,#2FE0BE,#1B9C88); color: #062B25; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600;">MB</div>
+        <div style="min-width: 0; flex: 1;">
+          <div style="font-size: 12.5px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Dr. Meriem Belkaid</div>
+          <div style="font-size: 11px; color: #667276;">Nutritionniste</div>
+        </div>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#667276" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8 10l4-4 4 4M8 14l4 4 4-4"/></svg>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ── Colonne principale ─────────────────────────────── -->
+  <div style="flex: 1; min-width: 0; display: flex; flex-direction: column;">
+
+    <header style="height: 52px; flex-shrink: 0; display: flex; align-items: center; gap: 14px; padding: 0 20px; border-bottom: 1px solid rgba(255,255,255,.07); background: #0D1011;">
+      <div>
+        <div style="font-size: 14.5px; font-weight: 600; letter-spacing: -.01em;">File d'attente</div>
+      </div>
+      <div class="mono" style="font-size: 11.5px; color: #667276;">Jeudi 13 septembre</div>
+
+      <div style="flex: 1;"></div>
+
+      <div style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border-radius: 6px; background: #15191B; border: 1px solid rgba(255,255,255,.08); width: 260px; cursor: pointer;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#667276" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+        <span style="font-size: 12.5px; color: #667276;">Rechercher un patient</span>
+        <span class="mono" style="margin-left: auto; font-size: 10.5px; color: #667276; border: 1px solid rgba(255,255,255,.12); border-radius: 4px; padding: 1px 5px;">Ctrl K</span>
+      </div>
+
+      <button class="btn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-2 8-2 8h16s-2-1-2-8"/><path d="M10.5 20a1.8 1.8 0 0 0 3 0"/></svg>
+      </button>
+      <button class="btn pri">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        Nouveau patient
+      </button>
+    </header>
+
+    <main style="flex: 1; min-height: 0; padding: 18px 20px; display: flex; flex-direction: column; gap: 16px;">
+
+      <!-- Bandeau de chiffres -->
+      <div style="display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 12px; flex-shrink: 0;">
+        <div class="tile rise" style="animation-delay: .04s">
+          <div class="lbl">En attente</div>
+          <div class="mono" style="font-size: 25px; font-weight: 500; margin-top: 5px; letter-spacing: -.02em;">5</div>
+        </div>
+        <div class="tile rise" style="animation-delay: .09s; border-color: rgba(47,224,190,.28);">
+          <div class="lbl" style="color: #2FE0BE;">En consultation</div>
+          <div style="display: flex; align-items: center; gap: 9px; margin-top: 5px;">
+            <span class="mono" style="font-size: 25px; font-weight: 500; color: #2FE0BE; letter-spacing: -.02em;">1</span>
+            <span class="live" style="width: 7px; height: 7px; border-radius: 999px; background: #2FE0BE;"></span>
+          </div>
+        </div>
+        <div class="tile rise" style="animation-delay: .14s">
+          <div class="lbl">Reçus aujourd'hui</div>
+          <div class="mono" style="font-size: 25px; font-weight: 500; margin-top: 5px; letter-spacing: -.02em;">12</div>
+        </div>
+        <div class="tile rise" style="animation-delay: .19s">
+          <div class="lbl">Recette du jour</div>
+          <div style="display: flex; align-items: baseline; gap: 5px; margin-top: 5px;">
+            <span class="mono" style="font-size: 25px; font-weight: 500; color: #F0A93B; letter-spacing: -.02em;">18 400</span>
+            <span style="font-size: 11.5px; color: #667276; font-weight: 500;">DA</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- File + dossier en cours -->
+      <div style="flex: 1; min-height: 0; display: flex; gap: 16px;">
+
+        <section class="rise" style="flex: 1.75; min-width: 0; background: #15191B; border: 1px solid rgba(255,255,255,.07); border-radius: 8px; display: flex; flex-direction: column; overflow: hidden; animation-delay: .24s">
+          <div style="height: 44px; flex-shrink: 0; display: flex; align-items: center; padding: 0 15px; border-bottom: 1px solid rgba(255,255,255,.07);">
+            <span style="font-size: 13px; font-weight: 600;">Salle d'attente</span>
+            <span class="mono" style="margin-left: 9px; font-size: 11px; color: #667276;">6 personnes</span>
+            <div style="flex: 1;"></div>
+            <span class="lbl" style="cursor: pointer;">Historique du jour</span>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 26px 1fr 132px 74px 96px; gap: 14px; padding: 8px 15px; border-bottom: 1px solid rgba(255,255,255,.06);">
+            <div class="lbl">#</div>
+            <div class="lbl">Patient</div>
+            <div class="lbl">Séances</div>
+            <div class="lbl">Attente</div>
+            <div class="lbl" style="text-align: right;">Action</div>
+          </div>
+
+          <div style="flex: 1; overflow: hidden; padding: 7px 9px; display: flex; flex-direction: column; gap: 2px;">
+            <sc-for list="{{ file }}" as="p" hint-placeholder-count="6">
+              <div class="row rise {{ p.cls }}" onClick="{{ p.pick }}" style="animation-delay: {{ p.delay }}">
+                <div class="mono" style="font-size: 12px; color: #667276;">{{ p.pos }}</div>
+
+                <div style="display: flex; align-items: center; gap: 11px; min-width: 0;">
+                  <div class="mono {{ p.dotCls }}" style="width: 30px; height: 30px; border-radius: 8px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; background: {{ p.avBg }}; color: {{ p.avInk }};">{{ p.ini }}</div>
+                  <div style="min-width: 0;">
+                    <div style="font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ p.nom }}</div>
+                    <div style="font-size: 11.5px; color: #96A1A6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ p.motif }}</div>
+                  </div>
+                </div>
+
+                <div>
+                  <div style="display: flex; justify-content: space-between; font-size: 11px; color: #96A1A6; margin-bottom: 5px;">
+                    <span class="mono">{{ p.faites }}/{{ p.total }}</span>
+                    <span class="mono">{{ p.pct }}%</span>
+                  </div>
+                  <div style="height: 3px; border-radius: 999px; background: rgba(255,255,255,.09); overflow: hidden;">
+                    <div class="grow" style="height: 100%; width: {{ p.pct }}%; background: {{ p.barre }}; border-radius: 999px; animation-delay: {{ p.delay }};"></div>
+                  </div>
+                </div>
+
+                <div class="mono" style="font-size: 12px; color: {{ p.attInk }};">{{ p.attente }}</div>
+
+                <div style="text-align: right;">
+                  <span style="display: inline-flex; align-items: center; gap: 5px; height: 25px; padding: 0 9px; border-radius: 999px; font-size: 11.5px; font-weight: 500; background: {{ p.tagBg }}; color: {{ p.tagInk }};">{{ p.tag }}</span>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </section>
+
+        <!-- Dossier du patient sélectionné -->
+        <aside class="rise" style="flex: 1; min-width: 0; background: #15191B; border: 1px solid rgba(255,255,255,.07); border-radius: 8px; display: flex; flex-direction: column; overflow: hidden; animation-delay: .3s">
+
+          <div style="padding: 16px 16px 14px; border-bottom: 1px solid rgba(255,255,255,.07);">
+            <div style="display: flex; align-items: center; gap: 11px;">
+              <div class="mono" style="width: 38px; height: 38px; border-radius: 9px; background: linear-gradient(135deg,#2FE0BE,#1B9C88); color: #062B25; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600;">{{ actif.ini }}</div>
+              <div style="min-width: 0; flex: 1;">
+                <div style="font-size: 14.5px; font-weight: 600; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ actif.nom }}</div>
+                <div style="font-size: 11.5px; color: #96A1A6;">{{ actif.meta }}</div>
+              </div>
+            </div>
+            <div style="display: flex; gap: 7px; margin-top: 13px;">
+              <button class="btn pri" style="flex: 1;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M9 13h6M9 17h4"/></svg>
+                Ordonnance
+              </button>
+              <button class="btn" style="flex: 1;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V9M10 19V5M16 19v-6"/></svg>
+                Bilan
+              </button>
+            </div>
+          </div>
+
+          <div style="padding: 15px 16px; display: flex; flex-direction: column; gap: 15px; flex: 1; min-height: 0;">
+
+            <div>
+              <div class="lbl" style="margin-bottom: 8px;">Forfait</div>
+              <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 7px;">
+                <span class="mono" style="font-size: 17px; font-weight: 500;">{{ actif.faites }} <span style="color: #667276; font-size: 13px;">/ {{ actif.total }} séances</span></span>
+                <span class="mono" style="font-size: 12px; color: #2FE0BE;">{{ actif.pct }}%</span>
+              </div>
+              <div style="height: 5px; border-radius: 999px; background: rgba(255,255,255,.09); overflow: hidden;">
+                <div class="grow" style="height: 100%; width: {{ actif.pct }}%; background: linear-gradient(90deg,#1FA894,#2FE0BE); border-radius: 999px; animation-delay: .45s;"></div>
+              </div>
+            </div>
+
+            <div style="height: 1px; background: rgba(255,255,255,.07);"></div>
+
+            <div>
+              <div class="lbl" style="margin-bottom: 9px;">Règlement</div>
+              <div style="display: flex; flex-direction: column; gap: 7px;">
+                <div style="display: flex; justify-content: space-between; align-items: baseline;">
+                  <span style="font-size: 12.5px; color: #96A1A6;">Total dû</span>
+                  <span class="mono" style="font-size: 13px;">{{ actif.du }} DA</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: baseline;">
+                  <span style="font-size: 12.5px; color: #96A1A6;">Déjà versé</span>
+                  <span class="mono" style="font-size: 13px; color: #2FE0BE;">{{ actif.verse }} DA</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: baseline; padding-top: 7px; border-top: 1px solid rgba(255,255,255,.07);">
+                  <span style="font-size: 12.5px; font-weight: 500;">Reste à payer</span>
+                  <span class="mono" style="font-size: 16px; font-weight: 600; color: #F0A93B;">{{ actif.reste }} DA</span>
+                </div>
+              </div>
+            </div>
+
+            <div style="height: 1px; background: rgba(255,255,255,.07);"></div>
+
+            <div>
+              <div class="lbl" style="margin-bottom: 9px;">Dernière visite</div>
+              <div style="background: #1B2023; border: 1px solid rgba(255,255,255,.06); border-radius: 7px; padding: 11px 12px;">
+                <div class="mono" style="font-size: 11px; color: #667276; margin-bottom: 5px;">{{ actif.dernDate }}</div>
+                <div style="font-size: 12.5px; color: #EAEFF1; line-height: 1.5;">{{ actif.dernNote }}</div>
+              </div>
+            </div>
+
+            <div style="margin-top: auto;">
+              <button class="btn pri" style="width: 100%; height: 36px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg>
+                Clôturer la séance
+              </button>
+              <div class="mono" style="text-align: center; font-size: 10.5px; color: #667276; margin-top: 8px;">Décompte la séance · facture {{ actif.prixSeance }} DA</div>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { choisi: 0 };
+  }
+
+  renderVals() {
+    const gens = [
+      { nom: 'Benali Yacine',    ini: 'BY', motif: 'Suivi nutritionnel',   faites: 7, total: 10, attente: 'en cours', etat: 'live',
+        meta: '34 ans · 0661 24 18 07', du: '12 000', verse: '8 400', reste: '3 600', prixSeance: '1 200',
+        dernDate: '28 août 2026', dernNote: 'Poids 84,2 kg · IMC 27,4. Bonne observance, poursuite du protocole.' },
+      { nom: 'Hadjeres Amina',   ini: 'HA', motif: 'Première consultation', faites: 0, total: 8,  attente: '12 min', etat: 'wait',
+        meta: '29 ans · 0770 51 33 92', du: '9 600', verse: '0', reste: '9 600', prixSeance: '1 200',
+        dernDate: 'Première visite', dernNote: "Dossier ouvert ce matin par l'assistante." },
+      { nom: 'Mokrani Sofiane',  ini: 'MS', motif: 'Contrôle mensuel',      faites: 4, total: 10, attente: '9 min', etat: 'wait',
+        meta: '41 ans · 0555 88 02 14', du: '12 000', verse: '6 000', reste: '6 000', prixSeance: '1 200',
+        dernDate: '14 août 2026', dernNote: 'Perte de 2,1 kg depuis la précédente. Ajustement des portions du soir.' },
+      { nom: 'Belkacem Nadia',   ini: 'BN', motif: 'Bilan sanguin',         faites: 2, total: 6,  attente: '6 min', etat: 'wait',
+        meta: '37 ans · 0662 19 74 30', du: '7 200', verse: '2 400', reste: '4 800', prixSeance: '1 200',
+        dernDate: '2 septembre 2026', dernNote: 'Bilan lipidique demandé, résultats à revoir en séance.' },
+      { nom: 'Cherif Karim',     ini: 'CK', motif: 'Suivi nutritionnel',    faites: 9, total: 10, attente: '3 min', etat: 'wait',
+        meta: '52 ans · 0698 40 65 21', du: '12 000', verse: '12 000', reste: '0', prixSeance: '1 200',
+        dernDate: '30 août 2026', dernNote: 'Objectif atteint. Dernière séance du forfait, bilan de clôture.' },
+      { nom: 'Oualid Meriem',    ini: 'OM', motif: 'Contrôle',              faites: 1, total: 4,  attente: '1 min', etat: 'wait',
+        meta: '26 ans · 0771 05 88 46', du: '4 800', verse: '1 200', reste: '3 600', prixSeance: '1 200',
+        dernDate: '5 septembre 2026', dernNote: 'Reprise du suivi après interruption estivale.' },
+    ];
+
+    const file = gens.map((g, i) => {
+      const pct = Math.round((g.faites / g.total) * 100);
+      const live = g.etat === 'live';
+      const on = i === this.state.choisi;
+      return {
+        ...g,
+        pct,
+        pos: String(i + 1).padStart(2, '0'),
+        delay: (0.3 + i * 0.045).toFixed(3) + 's',
+        cls: on ? 'on' : '',
+        dotCls: live ? 'live' : '',
+        avBg: live ? '#2FE0BE' : '#242B2E',
+        avInk: live ? '#062B25' : '#96A1A6',
+        barre: live ? '#2FE0BE' : '#39454A',
+        attInk: live ? '#2FE0BE' : '#96A1A6',
+        tag: live ? 'En cours' : 'Appeler',
+        tagBg: live ? 'rgba(47,224,190,.14)' : '#242B2E',
+        tagInk: live ? '#2FE0BE' : '#96A1A6',
+        pick: () => this.setState({ choisi: i }),
+      };
+    });
+
+    return { file, actif: file[this.state.choisi] ?? file[0] };
+  }
+}
+</script>
+</body>
+</html>

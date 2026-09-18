@@ -8,6 +8,7 @@ import 'dashboard_principale.dart';
 import 'dashboard_medecin.dart';
 import 'dashboard_assistant.dart';
 import 'add_profile_page.dart';
+import 'migration_page.dart';
 import 'widget/card.dart';
 import '../ui/app_shell.dart';
 import '../ui/fluent_button.dart';
@@ -39,7 +40,17 @@ class ProfileSelectorPage extends StatelessWidget {
       ],
       actions: [
         IconButton(
-          icon: const Icon(Icons.logout, color: Colors.white),
+          icon: const Icon(Icons.sync),
+          tooltip: 'Migrer les anciennes données',
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const MigrationPage()),
+            );
+          },
+        ),
+        IconButton(
+          icon: const Icon(Icons.logout),
           tooltip: 'Déconnexion',
           onPressed: () async {
             await AuthService().signOut();
@@ -56,11 +67,14 @@ class ProfileSelectorPage extends StatelessWidget {
         builder: (context, snap) {
           if (snap.hasError) {
             final e = snap.error;
+            final message = e is ApiException
+                ? e.message
+                : 'Chargement impossible : $e';
             return Center(
               child: Padding(
                 padding: const EdgeInsets.all(24),
-                child: Text(
-                  e is ApiException ? e.message : 'Chargement impossible',
+                child: SelectableText(
+                  message,
                   textAlign: TextAlign.center,
                 ),
               ),

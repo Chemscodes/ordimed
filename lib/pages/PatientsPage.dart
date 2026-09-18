@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import 'patient_details_page.dart';
 import '../services/soft_delete.dart';
+import '../widgets/patient_status_indicator.dart';
 
 class PatientsPage extends StatefulWidget {
   final String parentUid;
@@ -24,13 +25,40 @@ class _PatientsPageState extends State<PatientsPage> {
   String _query = '';
   final ScrollController _listCtrl = ScrollController();
   static const int _pageSize = 60;
+  static const Duration _fenetreRecente = Duration(days: 7);
   int _limit = _pageSize;
+
+  /// Recherche ponctuelle, uniquement quand `_query` sort de la fenêtre
+  /// récente écoutée en direct — voir [patientsRecentsFlux].
+  Future<List<Map<String, dynamic>>>? _rechercheComplete;
 
   @override
   void dispose() {
     _searchCtrl.dispose();
     _listCtrl.dispose();
     super.dispose();
+  }
+
+  /// Sous ce seuil, deux ou trois lettres correspondent a trop de patients
+  /// pour etre utiles, et redeclencheraient une recherche a chaque frappe.
+  static const int _seuilRecherche = 3;
+
+  void _onQueryChanged(String v) {
+    final query = v.trim().toLowerCase();
+    setState(() {
+      _query = query;
+      if (query.length < _seuilRecherche) {
+        _rechercheComplete = null;
+      } else if (_rechercheComplete == null) {
+        // Une seule lecture pour toute la session de recherche : sans ce
+        // garde, chaque caractère tape relancerait une lecture complete des
+        // patients ("Ahmed" en cinq lectures au lieu d'une). Les frappes
+        // suivantes ne font que refiltrer localement le meme resultat.
+        _rechercheComplete = ApiService.instance.patients(
+          profileId: widget.profileId,
+        );
+      }
+    });
   }
 
   @override
@@ -45,15 +73,11 @@ class _PatientsPageState extends State<PatientsPage> {
       end: Alignment.bottomRight,
       colors: isDark
           ? [scheme.surface, scheme.surfaceVariant]
-          : [Colors.white.withOpacity(0.92), const Color(0xFFF1F5F9).withOpacity(0.9)],
+          : [
+              Colors.white.withOpacity(0.92),
+              const Color(0xFFF1F5F9).withOpacity(0.9),
+            ],
     );
-    // La limite s'applique a l'affichage et non a la requete : le tri par
-    // createdAt cote serveur exclurait les dossiers qui n'ont pas ce champ,
-    // et ce sont les plus anciens.
-    final stream = ApiService.instance.patientsFlux(
-      profileId: widget.profileId,
-    );
-
     return Container(
       color: Colors.transparent,
       child: Column(
@@ -65,7 +89,9 @@ class _PatientsPageState extends State<PatientsPage> {
               decoration: BoxDecoration(
                 gradient: searchGradient,
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: Colors.white.withOpacity(isDark ? 0.12 : 0.55)),
+                border: Border.all(
+                  color: Colors.white.withOpacity(isDark ? 0.12 : 0.55),
+                ),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withOpacity(0.06),
@@ -78,7 +104,11 @@ class _PatientsPageState extends State<PatientsPage> {
               alignment: Alignment.centerLeft,
               child: Row(
                 children: [
-                  Icon(Icons.search_rounded, color: scheme.primary.withOpacity(0.85), size: 20),
+                  Icon(
+                    Icons.search_rounded,
+                    color: scheme.primary.withOpacity(0.85),
+                    size: 20,
+                  ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: TextField(
@@ -92,24 +122,36 @@ class _PatientsPageState extends State<PatientsPage> {
                         hintStyle: TextStyle(color: textFaint),
                         border: InputBorder.none,
                         isCollapsed: true,
-                        contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                        contentPadding: const EdgeInsets.symmetric(
+                          vertical: 12,
+                        ),
                       ),
-                      onChanged: (v) => setState(() => _query = v.trim().toLowerCase()),
+                      onChanged: _onQueryChanged,
                     ),
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 7,
+                    ),
                     decoration: BoxDecoration(
-                      color: isDark ? scheme.secondary.withOpacity(0.18) : const Color(0xFFE8EEF8),
+                      color: isDark
+                          ? scheme.secondary.withOpacity(0.18)
+                          : const Color(0xFFE8EEF8),
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.white.withOpacity(isDark ? 0.12 : 0.65)),
+                      border: Border.all(
+                        color: Colors.white.withOpacity(isDark ? 0.12 : 0.65),
+                      ),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(Icons.tune, size: 16, color: scheme.primary),
                         SizedBox(width: 6),
-                        Text('Filtres', style: TextStyle(color: scheme.primary, fontSize: 12)),
+                        Text(
+                          'Filtres',
+                          style: TextStyle(color: scheme.primary, fontSize: 12),
+                        ),
                       ],
                     ),
                   ),
@@ -118,215 +160,257 @@ class _PatientsPageState extends State<PatientsPage> {
             ),
           ),
           Expanded(
-            child: StreamBuilder<List<Map<String, dynamic>>>(
-              stream: stream,
-              builder: (context, snap) {
-                if (!snap.hasData) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                final tous = snap.data!;
-                final docs = tous.length > _limit
-                    ? tous.sublist(0, _limit)
-                    : tous;
-                final canLoadMore = docs.length >= _limit;
-                if (docs.isEmpty) return const Center(child: Text('Aucun patient'));
-
-                final filtered = docs.where((data) {
-                  if (isDeleted(data)) return false;
-                  final nom = (data['nom'] ?? '').toString();
-                  final prenom = (data['prenom'] ?? '').toString();
-                  final full = '$nom $prenom'.toLowerCase();
-                  if (_query.isEmpty) return true;
-                  return full.contains(_query);
-                }).toList();
-
-                if (filtered.isEmpty) {
-                  if (canLoadMore && _query.isNotEmpty) {
-                    return Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Text('Aucun patient trouve dans cette page'),
-                          const SizedBox(height: 8),
-                          OutlinedButton(
-                            onPressed: () => setState(() => _limit += _pageSize),
-                            child: const Text('Charger plus'),
-                          ),
-                        ],
-                      ),
-                    );
-                  }
-                  return const Center(child: Text('Aucun patient trouve'));
-                }
-
-                return Scrollbar(
-                  controller: _listCtrl,
-                  thumbVisibility: true,
-                  child: ListView.builder(
-                    controller: _listCtrl,
-                    padding: const EdgeInsets.all(12),
-                    itemCount: filtered.length + (canLoadMore ? 1 : 0),
-                    itemBuilder: (context, i) {
-                      if (canLoadMore && i >= filtered.length) {
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          child: Center(
-                            child: OutlinedButton(
-                              onPressed: () => setState(() => _limit += _pageSize),
-                              child: const Text('Charger plus'),
-                            ),
-                          ),
-                        );
-                      }
-                      final d = filtered[i];
-                      final nom = d['nom'] ?? 'Patient';
-                      final prenom = d['prenom'] ?? '';
-                      final motif = d['motif'] ?? '';
-                      final tel = d['tel'] ?? '';
-                      final medecin = d['assignedMedecinName'] ?? d['doctorName'] ?? d['doctorId'] ?? '';
-                      final assistant = d['assistantName'] ?? d['assistantId'] ?? '';
-                      return TweenAnimationBuilder<double>(
-                        duration: Duration(milliseconds: 220 + (i * 30)),
-                        tween: Tween(begin: 20, end: 0),
-                        builder: (context, offset, child) {
-                          return Opacity(
-                            opacity: 1 - (offset / 20).clamp(0, 1),
-                            child: Transform.translate(
-                              offset: Offset(0, offset),
-                              child: child,
-                            ),
-                          );
-                        },
-                        child: Container(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.06),
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(color: Colors.white.withOpacity(0.22)),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.08),
-                                blurRadius: 18,
-                                offset: const Offset(0, 12),
-                              ),
-                            ],
-                          ),
-                          child: Material(
-                            color: Colors.transparent,
-                            borderRadius: BorderRadius.circular(18),
-                            child: InkWell(
-                              borderRadius: BorderRadius.circular(18),
-                              onTap: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => PatientDetailsPage(
-                                      patientId: filtered[i]['id'].toString(),
-                                      patientName: nom,
-                                      parentUid: widget.parentUid,
-                                      ownerProfileId: widget.profileId,
-                                      canAddForm: true,
-                                      canAddDoctorForm: widget.canAddDoctorForm,
-                                    ),
-                                  ),
-                                );
-                              },
-                              child: Padding(
-                                padding: const EdgeInsets.all(14),
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    CircleAvatar(
-                                      radius: 22,
-                                      backgroundColor:
-                                          Theme.of(context).colorScheme.primary.withOpacity(0.16),
-                                      child: Icon(Icons.person_outline,
-                                          color: Theme.of(context).colorScheme.primary),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            '$nom $prenom',
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.w800,
-                                              fontSize: 17,
-                                              color: textPrimary,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 4),
-                                          Row(
-                                            children: [
-                                              if (motif.isNotEmpty)
-                                                Container(
-                                                  padding: const EdgeInsets.symmetric(
-                                                      horizontal: 10, vertical: 6),
-                                                  decoration: BoxDecoration(
-                                                    color: scheme.secondary.withOpacity(0.18),
-                                                    borderRadius: BorderRadius.circular(12),
-                                                  ),
-                                                  child: Text(
-                                                    motif,
-                                                    style: TextStyle(
-                                                      fontSize: 12,
-                                                      fontWeight: FontWeight.w700,
-                                                      color: textPrimary,
-                                                    ),
-                                                  ),
-                                                ),
-                                              if (tel.isNotEmpty) ...[
-                                                const SizedBox(width: 8),
-                                                Text(
-                                                  tel,
-                                                  style: TextStyle(
-                                                    color: textFaint,
-                                                    fontSize: 12,
-                                                  ),
-                                                ),
-                                              ],
-                                            ],
-                                          ),
-                                          if (medecin.isNotEmpty) ...[
-                                            const SizedBox(height: 6),
-                                            Text(
-                                              'Medecin : $medecin',
-                                              style: TextStyle(
-                                                color: textMuted,
-                                                fontSize: 13,
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                            ),
-                                          ],
-                                          if (assistant.isNotEmpty) ...[
-                                            const SizedBox(height: 4),
-                                            Text(
-                                              'Assistant : $assistant',
-                                              style: TextStyle(
-                                                color: textFaint,
-                                                fontSize: 12,
-                                              ),
-                                            ),
-                                          ],
-                                        ],
-                                      ),
-                                    ),
-                                    Icon(Icons.chevron_right, color: textFaint),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      );
-                    },
+            child: _query.length < _seuilRecherche
+                ? StreamBuilder<List<Map<String, dynamic>>>(
+                    stream: ApiService.instance.patientsRecentsFlux(
+                      profileId: widget.profileId,
+                      depuis: DateTime.now().subtract(_fenetreRecente),
+                    ),
+                    builder: (context, snap) => _buildListe(
+                      context,
+                      snap,
+                      scheme: scheme,
+                      textPrimary: textPrimary,
+                      textMuted: textMuted,
+                      textFaint: textFaint,
+                    ),
+                  )
+                : FutureBuilder<List<Map<String, dynamic>>>(
+                    future: _rechercheComplete,
+                    builder: (context, snap) => _buildListe(
+                      context,
+                      snap,
+                      scheme: scheme,
+                      textPrimary: textPrimary,
+                      textMuted: textMuted,
+                      textFaint: textFaint,
+                    ),
                   ),
-                );
-              },
-            ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildListe(
+    BuildContext context,
+    AsyncSnapshot<List<Map<String, dynamic>>> snap, {
+    required ColorScheme scheme,
+    required Color textPrimary,
+    required Color textMuted,
+    required Color textFaint,
+  }) {
+    if (!snap.hasData) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    final tous = snap.data!;
+    final docs = tous.length > _limit ? tous.sublist(0, _limit) : tous;
+    final canLoadMore = tous.length > _limit;
+    if (docs.isEmpty) return const Center(child: Text('Aucun patient'));
+
+    final filtered = docs.where((data) {
+      if (isDeleted(data)) return false;
+      final nom = (data['nom'] ?? '').toString();
+      final prenom = (data['prenom'] ?? '').toString();
+      final full = '$nom $prenom'.toLowerCase();
+      if (_query.length < _seuilRecherche) return true;
+      return full.contains(_query);
+    }).toList();
+
+    if (filtered.isEmpty) {
+      if (canLoadMore && _query.length >= _seuilRecherche) {
+        return Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Aucun patient trouve dans cette page'),
+              const SizedBox(height: 8),
+              OutlinedButton(
+                onPressed: () => setState(() => _limit += _pageSize),
+                child: const Text('Charger plus'),
+              ),
+            ],
+          ),
+        );
+      }
+      return const Center(child: Text('Aucun patient trouve'));
+    }
+
+    return Scrollbar(
+      controller: _listCtrl,
+      thumbVisibility: true,
+      child: ListView.builder(
+        controller: _listCtrl,
+        padding: const EdgeInsets.all(12),
+        itemCount: filtered.length + (canLoadMore ? 1 : 0),
+        itemBuilder: (context, i) {
+          if (canLoadMore && i >= filtered.length) {
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Center(
+                child: OutlinedButton(
+                  onPressed: () => setState(() => _limit += _pageSize),
+                  child: const Text('Charger plus'),
+                ),
+              ),
+            );
+          }
+          final d = filtered[i];
+          final nom = d['nom'] ?? 'Patient';
+          final prenom = d['prenom'] ?? '';
+          final motif = d['motif'] ?? '';
+          final tel = d['tel'] ?? '';
+          final medecin =
+              d['assignedMedecinName'] ??
+              d['doctorName'] ??
+              d['doctorId'] ??
+              '';
+          final assistant = d['assistantName'] ?? d['assistantId'] ?? '';
+          return TweenAnimationBuilder<double>(
+            duration: Duration(milliseconds: 220 + (i * 30)),
+            tween: Tween(begin: 20, end: 0),
+            builder: (context, offset, child) {
+              return Opacity(
+                opacity: 1 - (offset / 20).clamp(0, 1),
+                child: Transform.translate(
+                  offset: Offset(0, offset),
+                  child: child,
+                ),
+              );
+            },
+            child: Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.06),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: Colors.white.withOpacity(0.22)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.08),
+                    blurRadius: 18,
+                    offset: const Offset(0, 12),
+                  ),
+                ],
+              ),
+              child: Material(
+                color: Colors.transparent,
+                borderRadius: BorderRadius.circular(18),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(18),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => PatientDetailsPage(
+                          patientId: filtered[i]['id'].toString(),
+                          patientName: nom,
+                          parentUid: widget.parentUid,
+                          ownerProfileId: widget.profileId,
+                          canAddForm: true,
+                          canAddDoctorForm: widget.canAddDoctorForm,
+                        ),
+                      ),
+                    );
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        CircleAvatar(
+                          radius: 22,
+                          backgroundColor: Theme.of(
+                            context,
+                          ).colorScheme.primary.withOpacity(0.16),
+                          child: Icon(
+                            Icons.person_outline,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '$nom $prenom',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 17,
+                                  color: textPrimary,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              PatientStatusIndicator(patientData: d),
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  if (motif.isNotEmpty)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 6,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: scheme.secondary.withOpacity(
+                                          0.18,
+                                        ),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Text(
+                                        motif,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w700,
+                                          color: textPrimary,
+                                        ),
+                                      ),
+                                    ),
+                                  if (tel.isNotEmpty) ...[
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      tel,
+                                      style: TextStyle(
+                                        color: textFaint,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                              if (medecin.isNotEmpty) ...[
+                                const SizedBox(height: 6),
+                                Text(
+                                  'Medecin : $medecin',
+                                  style: TextStyle(
+                                    color: textMuted,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                              if (assistant.isNotEmpty) ...[
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Assistant : $assistant',
+                                  style: TextStyle(
+                                    color: textFaint,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                        Icon(Icons.chevron_right, color: textFaint),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
       ),
     );
   }

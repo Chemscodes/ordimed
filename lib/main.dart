@@ -1,13 +1,17 @@
 import 'dart:async';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'app_router.dart';
+import 'firebase_options.dart';
 import 'pages/login_page.dart';
 import 'pages/profile_selector_page.dart';
 import 'theme_controller.dart';
 import 'services/auth_service.dart';
+import 'services/backend_config.dart';
 import 'services/error_reporter.dart';
 import 'services/firestore_service.dart';
 import 'ui/app_theme.dart';
@@ -20,20 +24,36 @@ const String kAppVersion = '1.0.0+1';
 
 void main(List<String> args) async {
   final bool ultraLite = kUltraLite || args.contains('--lite');
-  WidgetsFlutterBinding.ensureInitialized();
-  FlutterError.onError = (details) {
-    FlutterError.dumpErrorToConsole(details);
-  };
 
+  // ensureInitialized doit être dans la même zone que runApp.
+  // runZonedGuarded crée une nouvelle zone, donc on l'appelle à l'intérieur.
   await runZonedGuarded(
     () async {
+      WidgetsFlutterBinding.ensureInitialized();
+      FlutterError.onError = (details) {
+        FlutterError.dumpErrorToConsole(details);
+      };
+      // Quelle base pour ce poste : Firestore ou le backend Node. Doit
+      // precede tout le reste — l'initialisation qui suit en depend, et
+      // AuthService lit ce choix pour savoir a qui demander la session.
+      await BackendConfig.restaurer();
+
+      if (BackendConfig.surFirebase) {
+        await Firebase.initializeApp(
+          options: DefaultFirebaseOptions.currentPlatform,
+        );
+        // Le cache local, et la raison principale de tenir cette branche :
+        // le cabinet continue de travailler pendant une coupure internet,
+        // ce que le backend Node ne sait pas faire — joignable ou pas.
+        FirebaseFirestore.instance.settings = const Settings(
+          persistenceEnabled: true,
+          cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+        );
+      }
+
       // Rouvre la session enregistree avant de construire l'interface :
       // sans ca, l'ecran de connexion s'afficherait une fraction de seconde
       // avant d'etre remplace.
-      //
-      // Ce qui disparait avec Firestore : le cache local qui laissait le
-      // cabinet travailler pendant une coupure internet. Le backend est
-      // joignable ou il ne l'est pas — voir MIGRATION.md.
       await AuthService().restaurer();
 
       ErrorReporter().install(appVersion: kAppVersion);

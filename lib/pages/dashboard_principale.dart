@@ -4,6 +4,7 @@ import 'add_profile_page.dart';
 import 'patientspage.dart';
 import 'profile_selector_page.dart';
 import 'patient_details_page.dart';
+import 'consultation_page.dart';
 import 'stats_page.dart';
 import '../ui/app_shell.dart';
 import '../ui/fluent_card.dart';
@@ -11,13 +12,12 @@ import '../ui/fluent_button.dart';
 import '../services/api_service.dart';
 import '../services/firestore_service.dart';
 import '../services/stats_service.dart';
-import '../widgets/daily_versements_card.dart';
+import '../services/waiting_service.dart';
+import '../widgets/consultation_alert_banner.dart';
+import '../widgets/kpi_row.dart';
+import '../widgets/salle_attente_board.dart';
 import '../core/coerce.dart';
-import '../core/parcours.dart';
 import 'sauvegarde_page.dart';
-import '../ui/info_display.dart';
-
-int? _toInt(dynamic v) => asIntOrNull(v);
 
 class DashboardPrincipal extends StatefulWidget {
   final String parentUid;
@@ -48,8 +48,6 @@ class _DashboardPrincipalState extends State<DashboardPrincipal> {
 
   @override
   Widget build(BuildContext context) {
-    const primary = Color(0xFF2563EB);
-
     return AppShell(
       title: _principalName == null || _principalName!.isEmpty
           ? 'Tableau directeur'
@@ -89,7 +87,10 @@ class _DashboardPrincipalState extends State<DashboardPrincipal> {
           onPressed: () => Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (_) => StatsPage(parentUid: widget.parentUid, title: 'Stats du cabinet'),
+              builder: (_) => StatsPage(
+                parentUid: widget.parentUid,
+                title: 'Stats du cabinet',
+              ),
             ),
           ),
         ),
@@ -116,64 +117,17 @@ class _DashboardPrincipalState extends State<DashboardPrincipal> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          ConsultationAlertBanner(
+            parentUid: widget.parentUid,
+            profileId: widget.profileId,
+            allowedDoctorIds: {widget.profileId, 'medecin_principal'},
+          ),
           if (navIndex == 0) ...[
             Expanded(
               child: ListView(
                 padding: EdgeInsets.zero,
                 children: [
-                  LayoutBuilder(
-                    builder: (context, constraints) {
-                      final isNarrow = constraints.maxWidth < 780;
-                      final cards = [
-                        Expanded(
-                          child: FluentCard(
-                            padding: const EdgeInsets.all(14),
-                            child: Row(
-                              children: const [
-                                CircleAvatar(
-                                  backgroundColor: Color(0x1F2563EB),
-                                  child: Icon(Icons.person_add_alt_1, color: primary),
-                                ),
-                                SizedBox(width: 12),
-                                Text(
-                                  'Profils',
-                                  style: TextStyle(fontWeight: FontWeight.w700),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: FluentCard(
-                            padding: const EdgeInsets.all(14),
-                            child: Row(
-                              children: const [
-                                CircleAvatar(
-                                  backgroundColor: Color(0x1F2563EB),
-                                  child: Icon(Icons.analytics_outlined, color: primary),
-                                ),
-                                SizedBox(width: 12),
-                                Text('Reporting'),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ];
-                      if (isNarrow) {
-                        return Column(
-                          children: [
-                            cards[0],
-                            const SizedBox(height: 12),
-                            cards[2],
-                          ],
-                        );
-                      }
-                      return Row(children: cards);
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  DailyVersementsCard(
+                  KpiRow(
                     parentUid: widget.parentUid,
                     profileId: widget.profileId,
                   ),
@@ -207,14 +161,17 @@ class _DashboardPrincipalState extends State<DashboardPrincipal> {
               child: _RendezVousTab(
                 parentUid: widget.parentUid,
                 profileId: widget.profileId,
-                principalName: _principalName ?? (widget.profileData['name'] ?? ''),
+                principalName:
+                    _principalName ?? (widget.profileData['name'] ?? ''),
               ),
             ),
           ] else ...[
             const Expanded(
               child: Center(
-                child:
-                    Text('Choisis un onglet Patients ou Rendez-vous au-dessus', textAlign: TextAlign.center),
+                child: Text(
+                  'Choisis un onglet Patients ou Rendez-vous au-dessus',
+                  textAlign: TextAlign.center,
+                ),
               ),
             ),
           ],
@@ -239,7 +196,9 @@ class _DashboardPrincipalState extends State<DashboardPrincipal> {
         title: const Text('Modifier le profil'),
         content: TextField(
           controller: nameCtrl,
-          decoration: const InputDecoration(labelText: 'Nom du medecin principal'),
+          decoration: const InputDecoration(
+            labelText: 'Nom du medecin principal',
+          ),
         ),
         actions: [
           TextButton(
@@ -269,13 +228,12 @@ class _DashboardPrincipalState extends State<DashboardPrincipal> {
     await ApiService.instance.majProfil(widget.profileId, {'name': newName});
     if (mounted) {
       setState(() => _principalName = newName);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Profil mis à jour')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Profil mis à jour')));
     }
   }
 }
-
 
 class _RendezVousTab extends StatefulWidget {
   final String parentUid;
@@ -293,278 +251,47 @@ class _RendezVousTab extends StatefulWidget {
 }
 
 class _RendezVousTabState extends State<_RendezVousTab> {
-  static const int _pageSize = 120;
-  static const int _lookbackDays = 7;
-  int _limit = _pageSize;
-  bool _showAll = false;
+  Future<void> _ouvrirConsultation(
+    BuildContext context,
+    Map<String, dynamic> entry,
+  ) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ConsultationPage(
+          parentUid: widget.parentUid,
+          profileId: widget.profileId,
+          waitingId: entry['id'].toString(),
+          waitingData: entry,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _demarrerEtConsulter(
+    BuildContext context,
+    Map<String, dynamic> entry,
+  ) async {
+    await WaitingService().markInConsultation(
+      parentUid: widget.parentUid,
+      profileId: widget.profileId,
+      waitingId: entry['id'].toString(),
+      doctorId: (entry['doctorId'] ?? '').toString(),
+      assistantId: (entry['assistantId'] ?? '').toString(),
+    );
+    if (!context.mounted) return;
+    await _ouvrirConsultation(context, entry);
+  }
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final mutedIcon = scheme.onSurface.withOpacity(0.65);
-    final now = DateTime.now();
-    final startOfDay = DateTime(now.year, now.month, now.day);
-    final endOfDay = startOfDay.add(const Duration(days: 1));
-    final recentCutoff = startOfDay.subtract(const Duration(days: _lookbackDays));
-    final stream = ApiService.instance.salleAttenteFlux(
+    return SalleAttenteBoard(
       profileId: widget.profileId,
-    );
-
-    return StreamBuilder<List<Map<String, dynamic>>>(
-      stream: stream,
-      builder: (context, snapshot) {
-        if (snapshot.hasError) {
-          return const Center(child: Text('Erreur de chargement de la salle d\'attente'));
-        }
-        if (!snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        // Le filtrage par date se fait ici : une contrainte serveur sur
-        // `createdAt` exclurait les entrees qui n'ont pas ce champ.
-        final docs = _showAll
-            ? snapshot.data!
-            : snapshot.data!.where((e) {
-                final c = asDateOrNull(e['createdAt']);
-                return c == null || !c.isBefore(recentCutoff);
-              }).toList();
-
-        final waiting = <Map<String, dynamic>>[];
-        final inConsultation = <Map<String, dynamic>>[];
-        final historyToday = <Map<String, dynamic>>[];
-
-        for (final data in docs) {
-          final status = (data['status'] ?? '').toString();
-          final closedTs = asDateOrNull(data['closedAt']);
-          final isDone = status == 'done' || closedTs != null;
-          if (isDone) {
-            if (closedTs != null &&
-                closedTs.isAfter(startOfDay.subtract(const Duration(milliseconds: 1))) &&
-                closedTs.isBefore(endOfDay)) {
-              historyToday.add(data);
-            }
-            continue;
-          }
-          if (status == 'in_consultation') {
-            inConsultation.add(data);
-            continue;
-          }
-          waiting.add(data);
-        }
-
-        if (waiting.isEmpty && inConsultation.isEmpty && historyToday.isEmpty) {
-          return const Center(child: Text('Aucun patient pour aujourd\'hui'));
-        }
-
-        final canLoadMore = docs.length >= _limit;
-
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Les compteurs etaient en texte sombre sur le fond sombre de
-            // l'AppShell : quasi illisibles. Ils passent en pastilles.
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
-              child: Row(
-                children: [
-                  _Compteur(
-                    label: 'En consultation',
-                    valeur: inConsultation.length,
-                    etape: EtapeParcours.enCours,
-                  ),
-                  const SizedBox(width: 10),
-                  _Compteur(
-                    label: "Salle d'attente",
-                    valeur: waiting.length,
-                    etape: EtapeParcours.arrive,
-                  ),
-                  const Spacer(),
-                  FluentButton(
-                    label: _showAll ? 'Recents' : 'Voir tout',
-                    icon: _showAll
-                        ? Icons.filter_alt_off_outlined
-                        : Icons.filter_alt_outlined,
-                    type: FluentButtonType.ghost,
-                    compact: true,
-                    onPressed: () => setState(() {
-                      _showAll = !_showAll;
-                      _limit = _pageSize;
-                    }),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.only(bottom: 12),
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: SectionHeader(
-                      titre: 'En consultation',
-                      compteur: inConsultation.length,
-                      icone: Icons.medical_services_outlined,
-                    ),
-                  ),
-                  if (inConsultation.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      child: Text('Aucun patient en consultation'),
-                    )
-                  else
-                    ...List.generate(inConsultation.length, (index) {
-                      final data = inConsultation[index];
-                      final patient = data['patientNom'] ?? 'Patient';
-                      final doctor = (data['doctorName'] ?? data['doctorId'] ?? '').toString();
-                      final assistant = (data['assistantName'] ?? data['assistantId'] ?? '').toString();
-                      final seancesTotal = _toInt(data['nombreSeances']);
-                      final seancesDone = _toInt(data['seancesEffectuees']);
-                      final started = asDateOrNull(data['inConsultationAt']);
-                      final startStr = started != null
-                          ? '${started.hour.toString().padLeft(2, '0')}:${started.minute.toString().padLeft(2, '0')}'
-                          : '';
-                      return Padding(
-                        padding: const EdgeInsets.only(
-                          bottom: 10,
-                          left: 12,
-                          right: 12,
-                        ),
-                        child: PersonRow(
-                          nom: patient.toString(),
-                          prenom: (data['patientPrenom'] ?? '').toString(),
-                          etape: EtapeParcours.enCours,
-                          meta: [
-                            if (doctor.isNotEmpty) 'Dr $doctor',
-                            if (assistant.isNotEmpty) assistant,
-                            if (seancesDone != null || seancesTotal != null)
-                              'Séance ${seancesDone ?? 0}/${seancesTotal ?? '-'}',
-                          ],
-                          trailing: SinceBadge(label: 'Depuis', value: startStr),
-                          actions: [
-                            IconButton(
-                              tooltip: 'Ouvrir le dossier',
-                              icon: const Icon(Icons.folder_open_outlined),
-                              onPressed: () => _openPatient(context, data),
-                            ),
-                          ],
-                          onTap: () => _openPatient(context, data),
-                        ),
-                      );
-                    }),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: SectionHeader(
-                      titre: "Salle d'attente",
-                      compteur: waiting.length,
-                      icone: Icons.hourglass_empty,
-                    ),
-                  ),
-                  if (waiting.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      child: Text('Aucun patient en attente'),
-                    )
-                  else
-                    ListView.builder(
-                      itemCount: waiting.length,
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemBuilder: (context, index) {
-                        final data = waiting[index];
-                        final patient = data['patientNom'] ?? 'Patient';
-                        final doctor = (data['doctorName'] ?? data['doctorId'] ?? '').toString();
-                        final assistant = (data['assistantName'] ?? data['assistantId'] ?? '').toString();
-                        final seancesTotal = _toInt(data['nombreSeances']);
-                        final seancesDone = _toInt(data['seancesEffectuees']);
-                        final created = asDateOrNull(data['createdAt']);
-                        final createdStr = created != null
-                            ? '${created.hour.toString().padLeft(2, '0')}:${created.minute.toString().padLeft(2, '0')}'
-                            : '';
-                        return Padding(
-                          padding: const EdgeInsets.only(
-                            bottom: 10,
-                            left: 12,
-                            right: 12,
-                          ),
-                          child: PersonRow(
-                            nom: patient.toString(),
-                            prenom: (data['patientPrenom'] ?? '').toString(),
-                            etape: EtapeParcours.arrive,
-                            meta: [
-                              if (doctor.isNotEmpty) 'Dr $doctor',
-                              if (assistant.isNotEmpty) assistant,
-                              if (seancesDone != null || seancesTotal != null)
-                                'Séance ${seancesDone ?? 0}/${seancesTotal ?? '-'}',
-                            ],
-                            trailing: SinceBadge(
-                              label: 'Arrivée',
-                              value: createdStr,
-                            ),
-                            actions: [
-                              IconButton(
-                                tooltip: 'Ouvrir le dossier',
-                                icon: const Icon(Icons.folder_open_outlined),
-                                onPressed: () => _openPatient(context, data),
-                              ),
-                            ],
-                            onTap: () => _openPatient(context, data),
-                          ),
-                        );
-                      },
-                    ),
-                  const Divider(),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    child: Text(
-                      'Historique du jour',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                  SizedBox(
-                    height: 160,
-                    child: historyToday.isEmpty
-                        ? const Center(child: Text('Aucun historique'))
-                        : ListView.builder(
-                            itemCount: historyToday.length,
-                            itemBuilder: (context, index) {
-                              final data = historyToday[index];
-                              final patient = data['patientNom'] ?? 'Patient';
-                              final doctor = (data['doctorName'] ?? data['doctorId'] ?? '').toString();
-                              final assistant = (data['assistantName'] ?? data['assistantId'] ?? '').toString();
-                              final closed = asDateOrNull(data['closedAt']);
-                              final closedStr = closed != null
-                                  ? '${closed.hour.toString().padLeft(2, '0')}:${closed.minute.toString().padLeft(2, '0')}'
-                                  : '';
-                              return ListTile(
-                                leading: Icon(Icons.history, color: mutedIcon),
-                                title: Text(patient),
-                                subtitle: Text(
-                                  [
-                                    if (doctor.isNotEmpty) 'Medecin: $doctor',
-                                    if (assistant.isNotEmpty) 'Assistant: $assistant',
-                                    'Recu: $closedStr',
-                                  ].join('\n'),
-                                ),
-                              );
-                            },
-                          ),
-                  ),
-                  if (canLoadMore)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      child: Center(
-                        child: OutlinedButton(
-                          onPressed: () => setState(() => _limit += _pageSize),
-                          child: const Text('Charger plus'),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ],
-        );
-      },
+      actions: SalleAttenteRowActions(
+        onConsulter: (ctx, entry) => _demarrerEtConsulter(ctx, entry),
+        onReprendre: (ctx, entry) => _ouvrirConsultation(ctx, entry),
+        onOuvrirDossier: (ctx, entry) => _openPatient(ctx, entry),
+      ),
     );
   }
 
@@ -587,7 +314,6 @@ class _RendezVousTabState extends State<_RendezVousTab> {
     );
   }
 }
-
 
 class _VersementCardsForDay extends StatefulWidget {
   final String parentUid;
@@ -619,8 +345,8 @@ class _VersementCardsForDayState extends State<_VersementCardsForDay> {
         final profileNames = <String, String>{};
         if (profilesSnap.hasData) {
           for (final d in profilesSnap.data!) {
-            profileNames[(d['id'] ?? '').toString()] =
-                (d['name'] ?? '').toString();
+            profileNames[(d['id'] ?? '').toString()] = (d['name'] ?? '')
+                .toString();
           }
         }
 
@@ -647,7 +373,8 @@ class _VersementCardsForDayState extends State<_VersementCardsForDay> {
 
             final data = snapshot.data ?? const <String, dynamic>{};
             final cabinetTotal = _asDouble(data['versementsTotal']);
-            final cabinetCount = (data['versementsCount'] as num?)?.toInt() ?? 0;
+            final cabinetCount =
+                (data['versementsCount'] as num?)?.toInt() ?? 0;
 
             final doctors = <String, _DoctorAgg>{};
             final rawByDoctor = data['doctorVersements'];
@@ -659,7 +386,7 @@ class _VersementCardsForDayState extends State<_VersementCardsForDay> {
                 final displayName = storedName.isNotEmpty
                     ? storedName
                     : (profileNames[key] ??
-                        (key == '_none' ? 'Sans medecin' : key));
+                          (key == '_none' ? 'Sans medecin' : key));
                 doctors[key] = _DoctorAgg(
                   name: displayName,
                   total: _asDouble(value['total']),
@@ -670,10 +397,11 @@ class _VersementCardsForDayState extends State<_VersementCardsForDay> {
 
             final principalTotal = doctors[widget.principalId]?.total ?? 0;
             final principalCount = doctors[widget.principalId]?.count ?? 0;
-            final others = doctors.entries
-                .where((e) => e.key != widget.principalId)
-                .toList()
-              ..sort((a, b) => b.value.total.compareTo(a.value.total));
+            final others =
+                doctors.entries
+                    .where((e) => e.key != widget.principalId)
+                    .toList()
+                  ..sort((a, b) => b.value.total.compareTo(a.value.total));
 
             final cards = <Widget>[
               _statCard(
@@ -714,12 +442,7 @@ class _VersementCardsForDayState extends State<_VersementCardsForDay> {
               spacing: 12,
               runSpacing: 12,
               children: cards
-                  .map(
-                    (card) => SizedBox(
-                      width: 320,
-                      child: card,
-                    ),
-                  )
+                  .map((card) => SizedBox(width: 320, child: card))
                   .toList(),
             );
           },
@@ -749,7 +472,10 @@ class _VersementCardsForDayState extends State<_VersementCardsForDay> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
+                Text(
+                  label,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
                 const SizedBox(height: 2),
                 Text(subtitle, style: TextStyle(color: textMuted)),
               ],
@@ -777,66 +503,6 @@ class _VersementCardsForDayState extends State<_VersementCardsForDay> {
   }
 }
 
-/// Compteur d'etat en pastille, pour l'en-tete de la salle d'attente.
-///
-/// Les anciens compteurs etaient du texte sombre pose sur le fond sombre de
-/// l'AppShell : le contraste etait insuffisant pour les lire.
-class _Compteur extends StatelessWidget {
-  final String label;
-  final int valeur;
-  final EtapeParcours etape;
-
-  const _Compteur({
-    required this.label,
-    required this.valeur,
-    required this.etape,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final couleur = etape == EtapeParcours.enCours
-        ? scheme.secondary
-        : scheme.primary;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-      decoration: BoxDecoration(
-        color: scheme.surface,
-        borderRadius: BorderRadius.circular(AppTheme.rPill),
-        border: Border.all(color: couleur.withValues(alpha: 0.45)),
-        boxShadow: AppTheme.shadow(context, strength: 0.5),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(etape.icone, size: 15, color: couleur),
-          const SizedBox(width: 8),
-          Text(
-            '$valeur',
-            style: TextStyle(
-              fontSize: 17,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.4,
-              fontFeatures: const [FontFeature.tabularFigures()],
-              color: couleur,
-            ),
-          ),
-          const SizedBox(width: 7),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w600,
-              color: scheme.onSurface.withValues(alpha: 0.7),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _DoctorAgg {
   String name;
   double total;
@@ -854,10 +520,12 @@ class _PurchasesHistoryPrincipal extends StatefulWidget {
   });
 
   @override
-  State<_PurchasesHistoryPrincipal> createState() => _PurchasesHistoryPrincipalState();
+  State<_PurchasesHistoryPrincipal> createState() =>
+      _PurchasesHistoryPrincipalState();
 }
 
-class _PurchasesHistoryPrincipalState extends State<_PurchasesHistoryPrincipal> {
+class _PurchasesHistoryPrincipalState
+    extends State<_PurchasesHistoryPrincipal> {
   static const int _pageSize = 100;
   int _limit = _pageSize;
 
@@ -867,14 +535,13 @@ class _PurchasesHistoryPrincipalState extends State<_PurchasesHistoryPrincipal> 
     final textPrimary = scheme.onSurface;
     final textMuted = scheme.onSurface.withOpacity(0.7);
     final textFaint = scheme.onSurface.withOpacity(0.5);
-    // Le collectionGroup traversait tous les cabinets et se rattrapait par
-    // un filtre sur parentUid. Le cabinet vient maintenant du jeton.
-    final stream = ApiService.instance.achatsFlux().map(
-      (liste) => liste.where((a) => a['dayKey'] == widget.dayKey).toList(),
-    );
+    // Une lecture ponctuelle du jour demande, pas un listener sur tout
+    // l'historique des achats : ce dialogue s'ouvre a la demande et n'a pas
+    // besoin d'etre tenu a jour en direct pendant qu'il est ferme.
+    final future = ApiService.instance.achats(dayKey: widget.dayKey);
 
-    return StreamBuilder<List<Map<String, dynamic>>>(
-      stream: stream,
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: future,
       builder: (context, snap) {
         if (snap.hasError) {
           return const Center(child: Text('Erreur de chargement'));
@@ -886,13 +553,14 @@ class _PurchasesHistoryPrincipalState extends State<_PurchasesHistoryPrincipal> 
         // dans la requete, ou ils excluaient les achats sans `createdAt`.
         final tous = snap.data!;
         final docs = tous.length > _limit ? tous.sublist(0, _limit) : tous;
+        final canLoadMore = tous.length > _limit;
         if (docs.isEmpty) {
           return const Center(child: Text('Aucun achat aujourd\'hui'));
         }
         return ListView.builder(
-          itemCount: docs.length + (docs.length >= _limit ? 1 : 0),
+          itemCount: docs.length + (canLoadMore ? 1 : 0),
           itemBuilder: (context, i) {
-            if (docs.length >= _limit && i >= docs.length) {
+            if (canLoadMore && i >= docs.length) {
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 child: Center(
@@ -926,23 +594,35 @@ class _PurchasesHistoryPrincipalState extends State<_PurchasesHistoryPrincipal> 
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(produit,
-                            style: TextStyle(
-                                fontWeight: FontWeight.w700, color: textPrimary)),
+                        Text(
+                          produit,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: textPrimary,
+                          ),
+                        ),
                         if (fournisseur.isNotEmpty)
-                          Text('Fournisseur: $fournisseur',
-                              style: TextStyle(color: textMuted, fontSize: 12)),
+                          Text(
+                            'Fournisseur: $fournisseur',
+                            style: TextStyle(color: textMuted, fontSize: 12),
+                          ),
                         if (profileId.isNotEmpty)
-                          Text('Compte: $profileId',
-                              style: TextStyle(color: textFaint, fontSize: 12)),
+                          Text(
+                            'Compte: $profileId',
+                            style: TextStyle(color: textFaint, fontSize: 12),
+                          ),
                         if (dateStr.isNotEmpty)
-                          Text(dateStr,
-                              style: TextStyle(color: textFaint, fontSize: 12)),
+                          Text(
+                            dateStr,
+                            style: TextStyle(color: textFaint, fontSize: 12),
+                          ),
                       ],
                     ),
                   ),
-                  Text('DA ${montant.toStringAsFixed(0)}',
-                      style: const TextStyle(fontWeight: FontWeight.w800)),
+                  Text(
+                    'DA ${montant.toStringAsFixed(0)}',
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
                 ],
               ),
             );
@@ -958,7 +638,8 @@ class _WeeklyFinanceChartPrincipal extends StatelessWidget {
 
   const _WeeklyFinanceChartPrincipal({required this.parentUid});
 
-  String _dayKey(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  String _dayKey(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
   @override
   Widget build(BuildContext context) {
@@ -988,7 +669,10 @@ class _WeeklyFinanceChartPrincipal extends StatelessWidget {
             duration: const Duration(milliseconds: 250),
             height: h.clamp(4, 90),
             width: 12,
-            decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(6)),
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(6),
+            ),
           );
         }
 
@@ -997,8 +681,10 @@ class _WeeklyFinanceChartPrincipal extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Finances - 7 derniers jours',
-                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+              const Text(
+                'Finances - 7 derniers jours',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+              ),
               const SizedBox(height: 6),
               Text(
                 'Versements: ${data.totalVersements.toStringAsFixed(0)} | Achats: ${data.totalAchats.toStringAsFixed(0)} | Net: ${data.totalNet.toStringAsFixed(0)}',
@@ -1019,9 +705,15 @@ class _WeeklyFinanceChartPrincipal extends StatelessWidget {
                             mainAxisAlignment: MainAxisAlignment.center,
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
-                              bar(data.versements[key] ?? 0, const Color(0xFF2563EB)),
+                              bar(
+                                data.versements[key] ?? 0,
+                                const Color(0xFF2563EB),
+                              ),
                               const SizedBox(width: 4),
-                              bar(data.achats[key] ?? 0, const Color(0xFFF97316)),
+                              bar(
+                                data.achats[key] ?? 0,
+                                const Color(0xFFF97316),
+                              ),
                               const SizedBox(width: 4),
                               bar(data.net[key] ?? 0, const Color(0xFF16A34A)),
                             ],
@@ -1060,20 +752,22 @@ class _WeeklyFinanceChartPrincipal extends StatelessWidget {
     final firstDay = today.subtract(const Duration(days: 6));
     final days = List.generate(7, (i) => firstDay.add(Duration(days: i)));
 
-    final versementsByDay = <String, double>{for (final d in days) _dayKey(d): 0};
+    final versementsByDay = <String, double>{
+      for (final d in days) _dayKey(d): 0,
+    };
     final achatsByDay = <String, double>{for (final d in days) _dayKey(d): 0};
 
     // Lecture des agregats journaliers (au plus 7 documents) au lieu de
     // scanner toute la base de patients/achats du cabinet.
     try {
-      final stats = await StatsService().recentDailyStats(
-        parentUid: parentUid,
-        limit: 30,
-      ).first;
+      final stats = await StatsService()
+          .recentDailyStats(parentUid: parentUid, limit: 30)
+          .first;
       for (final data in stats) {
         final key = (data['dayKey'] ?? '').toString();
         if (!versementsByDay.containsKey(key)) continue;
-        versementsByDay[key] = (data['versementsTotal'] as num?)?.toDouble() ?? 0;
+        versementsByDay[key] =
+            (data['versementsTotal'] as num?)?.toDouble() ?? 0;
         achatsByDay[key] = (data['achatsTotal'] as num?)?.toDouble() ?? 0;
       }
     } catch (_) {
@@ -1090,7 +784,7 @@ class _WeeklyFinanceChartPrincipal extends StatelessWidget {
     final maxVal = [
       ...versementsByDay.values,
       ...achatsByDay.values,
-      ...netByDay.values
+      ...netByDay.values,
     ].fold<double>(0, (p, e) => e.abs() > p ? e.abs() : p);
 
     return _WeeklyFinanceData(
@@ -1101,7 +795,6 @@ class _WeeklyFinanceChartPrincipal extends StatelessWidget {
       maxValue: maxVal,
     );
   }
-
 }
 
 class _WeeklyFinanceData {
@@ -1111,7 +804,8 @@ class _WeeklyFinanceData {
   final Map<String, double> net;
   final double maxValue;
 
-  double get totalVersements => versements.values.fold<double>(0, (p, e) => p + e);
+  double get totalVersements =>
+      versements.values.fold<double>(0, (p, e) => p + e);
   double get totalAchats => achats.values.fold<double>(0, (p, e) => p + e);
   double get totalNet => net.values.fold<double>(0, (p, e) => p + e);
 
@@ -1159,15 +853,18 @@ class _NetDailyCardPrincipal extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final statsStream =
-        StatsService().dailyStatsDoc(parentUid: parentUid, dayKey: _todayKey());
+    final statsStream = StatsService().dailyStatsDoc(
+      parentUid: parentUid,
+      dayKey: _todayKey(),
+    );
     return StreamBuilder<Map<String, dynamic>?>(
       stream: statsStream,
       builder: (context, statsSnap) {
         final data = statsSnap.data;
         if (data != null) {
           final versementsTotal = _asDouble(data['versementsTotal']) ?? 0;
-          final versementsCount = (data['versementsCount'] as num?)?.toInt() ?? 0;
+          final versementsCount =
+              (data['versementsCount'] as num?)?.toInt() ?? 0;
           final achatsTotal = _asDouble(data['achatsTotal']) ?? 0;
           final achatsCount = (data['achatsCount'] as num?)?.toInt() ?? 0;
           return _buildNetCard(
@@ -1216,7 +913,10 @@ class _NetDailyCardPrincipal extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Net du jour', style: TextStyle(fontWeight: FontWeight.w700)),
+                const Text(
+                  'Net du jour',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
                 const SizedBox(height: 2),
                 Text(subtitle, style: TextStyle(color: textMuted)),
                 Text(
@@ -1255,43 +955,47 @@ class _PurchasesCardPrincipal extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textMuted = Theme.of(context).colorScheme.onSurface.withOpacity(0.7);
-    final stream = ApiService.instance.achatsFlux();
+    // Le total du jour vient de l'agregat `daily_stats`, pas d'un listener
+    // sur tout l'historique des achats du cabinet.
+    final statsStream = StatsService().dailyStatsDoc(
+      parentUid: parentUid,
+      dayKey: _todayKey(),
+    );
 
-    return StreamBuilder<List<Map<String, dynamic>>>(
-      stream: stream,
+    return StreamBuilder<Map<String, dynamic>?>(
+      stream: statsStream,
       builder: (context, snap) {
-        double total = 0;
-        int count = 0;
-        if (snap.hasData) {
-          for (final data in snap.data!) {
-            final createdAt = asDateOrNull(data['createdAt']);
-            final isToday = (data['dayKey'] ?? '') == _todayKey() ||
-                (createdAt != null &&
-                    createdAt.year == DateTime.now().year &&
-                    createdAt.month == DateTime.now().month &&
-                    createdAt.day == DateTime.now().day);
-            if (!isToday) continue;
-            final m = data['montant'];
-            if (m is num) total += m.toDouble();
-            count += 1;
-          }
-        }
+        final data = snap.data;
+        final total = data == null
+            ? 0.0
+            : (asDoubleOrNull(data['achatsTotal']) ?? 0);
+        final count = data == null
+            ? 0
+            : (data['achatsCount'] as num?)?.toInt() ?? 0;
         final card = FluentCard(
           padding: const EdgeInsets.all(14),
           child: Row(
             children: [
               CircleAvatar(
                 backgroundColor: Colors.green.withOpacity(0.15),
-                child: const Icon(Icons.shopping_bag_outlined, color: Colors.green),
+                child: const Icon(
+                  Icons.shopping_bag_outlined,
+                  color: Colors.green,
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Achats du cabinet (jour)', style: TextStyle(fontWeight: FontWeight.w700)),
+                    const Text(
+                      'Achats du cabinet (jour)',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
                     Text(
-                      count == 1 ? '1 achat aujourd\'hui' : '$count achats aujourd\'hui',
+                      count == 1
+                          ? '1 achat aujourd\'hui'
+                          : '$count achats aujourd\'hui',
                       style: TextStyle(color: textMuted),
                     ),
                   ],
@@ -1305,10 +1009,7 @@ class _PurchasesCardPrincipal extends StatelessWidget {
           ),
         );
 
-        return InkWell(
-          onTap: () => _showHistory(context),
-          child: card,
-        );
+        return InkWell(onTap: () => _showHistory(context), child: card);
       },
     );
   }
@@ -1321,10 +1022,16 @@ class _PurchasesCardPrincipal extends StatelessWidget {
         content: SizedBox(
           width: AppTheme.dialogWidth(context, 520),
           height: 440,
-          child: _PurchasesHistoryPrincipal(parentUid: parentUid, dayKey: _todayKey()),
+          child: _PurchasesHistoryPrincipal(
+            parentUid: parentUid,
+            dayKey: _todayKey(),
+          ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Fermer')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Fermer'),
+          ),
         ],
       ),
     );

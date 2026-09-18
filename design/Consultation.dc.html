@@ -1,0 +1,300 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif; background: #0A0C0D; color: #EAEFF1; -webkit-font-smoothing: antialiased; }
+    a { color: #2FE0BE; text-decoration: none; }
+    a:hover { color: #5FEBD0; }
+    .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+
+    @keyframes rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+    .rise { animation: rise .55s cubic-bezier(.22,.8,.3,1) both; }
+    @keyframes halo {
+      0% { box-shadow: 0 0 0 0 rgba(47,224,190,.55); }
+      70% { box-shadow: 0 0 0 8px rgba(47,224,190,0); }
+      100% { box-shadow: 0 0 0 0 rgba(47,224,190,0); }
+    }
+    .live { animation: halo 2.2s ease-out infinite; }
+    @keyframes caret { 0%, 45% { opacity: 1; } 55%, 100% { opacity: .1; } }
+    .caret { animation: caret 1.15s ease-in-out infinite; }
+    @keyframes grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+    .grow { animation: grow .85s cubic-bezier(.22,.8,.3,1) both; transform-origin: left center; }
+    /* Une barre verticale s'ouvre vers le haut : scaleY, pas scaleX. */
+    @keyframes growY { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+    .growY { animation: growY .7s cubic-bezier(.22,.8,.3,1) both; transform-origin: bottom center; }
+
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 13px; border-radius: 6px; border: 1px solid rgba(255,255,255,.13); background: #1B2023; color: #EAEFF1; font: 500 12.5px "IBM Plex Sans", sans-serif; cursor: pointer; transition: background .16s ease, border-color .16s ease; }
+    .btn:hover { background: #262D30; border-color: rgba(255,255,255,.2); }
+    .btn.pri { background: #2FE0BE; border-color: #2FE0BE; color: #062B25; font-weight: 600; }
+    .btn.pri:hover { background: #55E8CD; border-color: #55E8CD; }
+
+    .lbl { font-size: 10.5px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; color: #667276; }
+
+    .pas {
+      width: 30px; height: 30px; border-radius: 7px; flex-shrink: 0;
+      background: #242B2E; border: 1px solid rgba(255,255,255,.1);
+      display: flex; align-items: center; justify-content: center; cursor: pointer;
+      transition: background .13s ease, transform .08s ease;
+    }
+    .pas:hover { background: #262D30; }
+    .pas:active { transform: scale(.93); }
+
+    .champ { background: #0D1011; border: 1px solid rgba(255,255,255,.1); border-radius: 8px; padding: 13px 14px; transition: border-color .18s ease; }
+    .champ:hover { border-color: rgba(255,255,255,.18); }
+    .champ.actif { border-color: rgba(47,224,190,.45); }
+
+    .prod { display: flex; align-items: center; gap: 11px; padding: 11px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,.06); background: #1B2023; cursor: pointer; transition: background .15s ease, border-color .15s ease; }
+    .prod:hover { background: #242B2E; border-color: rgba(255,255,255,.13); }
+    .prod.fait { background: rgba(47,224,190,.07); border-color: rgba(47,224,190,.26); }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; display: flex; flex-direction: column; overflow: hidden; background: #0A0C0D;">
+
+  <!-- ── Bandeau de séance : l'app change d'état ──────── -->
+  <div class="rise" style="height: 56px; flex-shrink: 0; display: flex; align-items: center; gap: 14px; padding: 0 20px; background: linear-gradient(90deg, rgba(47,224,190,.1), rgba(47,224,190,.03) 45%, transparent); border-bottom: 1px solid rgba(47,224,190,.22);">
+    <span class="live" style="width: 8px; height: 8px; border-radius: 999px; background: #2FE0BE; flex-shrink: 0;"></span>
+    <span style="font-size: 13px; font-weight: 600; color: #2FE0BE;">Consultation en cours</span>
+
+    <div style="width: 1px; height: 20px; background: rgba(255,255,255,.12);"></div>
+
+    <div class="mono" style="width: 32px; height: 32px; border-radius: 8px; background: linear-gradient(135deg,#2FE0BE,#1B9C88); color: #062B25; display: flex; align-items: center; justify-content: center; font-size: 11.5px; font-weight: 600;">BY</div>
+    <div>
+      <div style="font-size: 13.5px; font-weight: 600; letter-spacing: -.01em;">Benali Yacine</div>
+      <div style="font-size: 11.5px; color: #96A1A6;">34 ans · séance 8 sur 10</div>
+    </div>
+
+    <div style="flex: 1;"></div>
+
+    <div style="display: flex; align-items: center; gap: 7px; padding: 0 12px; height: 30px; border-radius: 999px; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.09);">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#96A1A6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>
+      <span class="mono" style="font-size: 12.5px; color: #EAEFF1;">12:34</span>
+    </div>
+    <button class="btn">Mettre en pause</button>
+    <button class="btn pri">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg>
+      Clôturer la séance
+    </button>
+  </div>
+
+  <main style="flex: 1; min-height: 0; padding: 18px 20px; display: flex; gap: 16px;">
+
+    <!-- Colonne de saisie -->
+    <div style="flex: 1.7; min-width: 0; display: flex; flex-direction: column; gap: 14px;">
+
+      <section class="rise" style="flex-shrink: 0; background: #15191B; border: 1px solid rgba(255,255,255,.07); border-radius: 9px; padding: 16px; animation-delay: .06s">
+        <div style="display: flex; align-items: center; margin-bottom: 14px;">
+          <span style="font-size: 13px; font-weight: 600;">Mesures du jour</span>
+          <span class="mono" style="margin-left: 9px; font-size: 11px; color: #667276;">précédent : 86,3 kg · IMC 28,2</span>
+        </div>
+
+        <div style="display: flex; gap: 11px;">
+
+          <div class="champ actif" style="flex: 1.2;">
+            <div class="lbl" style="margin-bottom: 9px;">Poids</div>
+            <div style="display: flex; align-items: center; gap: 11px;">
+              <div class="pas" onClick="{{ moins }}">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#EAEFF1" stroke-width="2.3" stroke-linecap="round"><path d="M5 12h14"/></svg>
+              </div>
+              <div style="flex: 1; text-align: center;">
+                <span class="mono" style="font-size: 26px; font-weight: 500; letter-spacing: -.02em;">{{ poids }}</span>
+                <span class="mono" style="font-size: 12px; color: #667276; margin-left: 3px;">kg</span>
+              </div>
+              <div class="pas" onClick="{{ plus }}">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#EAEFF1" stroke-width="2.3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+              </div>
+            </div>
+            <div class="mono" style="text-align: center; font-size: 11.5px; color: {{ deltaInk }}; margin-top: 7px;">{{ delta }} depuis le 28 août</div>
+          </div>
+
+          <div class="champ" style="flex: 1;">
+            <div class="lbl" style="margin-bottom: 9px;">Taille</div>
+            <div style="text-align: center; padding: 4px 0;">
+              <span class="mono" style="font-size: 26px; font-weight: 500; letter-spacing: -.02em;">175</span>
+              <span class="mono" style="font-size: 12px; color: #667276; margin-left: 3px;">cm</span>
+            </div>
+            <div class="mono" style="text-align: center; font-size: 11.5px; color: #667276; margin-top: 7px;">inchangée</div>
+          </div>
+
+          <!-- Champ calculé : jamais saisi, toujours déduit -->
+          <div style="flex: 1; padding: 13px 14px; border-radius: 8px; background: rgba(47,224,190,.06); border: 1px solid rgba(47,224,190,.24);">
+            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 9px;">
+              <div class="lbl" style="color: #2FE0BE;">IMC</div>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#2FE0BE" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg>
+            </div>
+            <div style="text-align: center; padding: 4px 0;">
+              <span class="mono" style="font-size: 26px; font-weight: 500; color: {{ imcInk }}; letter-spacing: -.02em;">{{ imc }}</span>
+            </div>
+            <div style="text-align: center; font-size: 11.5px; color: {{ imcInk }}; margin-top: 7px;">{{ imcLibelle }}</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="rise" style="flex: 1; min-height: 0; background: #15191B; border: 1px solid rgba(255,255,255,.07); border-radius: 9px; padding: 16px; display: flex; flex-direction: column; animation-delay: .12s">
+        <div style="display: flex; align-items: center; margin-bottom: 12px;">
+          <span style="font-size: 13px; font-weight: 600;">Note de séance</span>
+          <div style="flex: 1;"></div>
+          <span class="mono" style="font-size: 11px; color: #566165;">Enregistré à 14:41</span>
+        </div>
+
+        <div class="champ actif" style="flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 15px 16px;">
+          <div style="font-size: 14px; line-height: 1.75; color: #DCE4E6;">
+            Perte de 2,1 kg depuis la dernière séance, sur un objectif de 2 kg par mois —
+            rythme conforme. Le patient rapporte une bonne tolérance du protocole, avec une
+            difficulté sur le repas du soir en semaine.<br><br>
+            Ajustement proposé : report d'une portion de féculents du dîner vers le déjeuner,
+            maintien de l'activité physique à cinq séances hebdomadaires.<span class="caret" style="display: inline-block; width: 1.5px; height: 15px; background: #2FE0BE; margin-left: 2px; vertical-align: text-bottom;"></span>
+          </div>
+
+          <div style="margin-top: auto; padding-top: 13px; display: flex; gap: 6px; flex-wrap: wrap;">
+            <span class="lbl" style="width: 100%; margin-bottom: 3px;">Ajouter depuis mes formulations</span>
+            <sc-for list="{{ raccourcis }}" as="r" hint-placeholder-count="4">
+              <span style="height: 27px; padding: 0 11px; display: inline-flex; align-items: center; border-radius: 999px; background: #242B2E; border: 1px solid rgba(255,255,255,.09); font-size: 11.5px; color: #96A1A6; cursor: pointer;">{{ r.texte }}</span>
+            </sc-for>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- Colonne de production -->
+    <aside style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px;">
+
+      <section class="rise" style="background: #15191B; border: 1px solid rgba(255,255,255,.07); border-radius: 9px; padding: 16px; animation-delay: .18s">
+        <div class="lbl" style="margin-bottom: 12px;">Documents de la visite</div>
+        <div style="display: flex; flex-direction: column; gap: 7px;">
+          <sc-for list="{{ docs }}" as="d" hint-placeholder-count="3">
+            <div class="prod {{ d.cls }}" onClick="{{ d.basculer }}">
+              <div style="width: 28px; height: 28px; border-radius: 7px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: {{ d.bg }};">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{ d.ink }}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/></svg>
+              </div>
+              <div style="min-width: 0; flex: 1;">
+                <div style="font-size: 12.5px; font-weight: 500;">{{ d.titre }}</div>
+                <div style="font-size: 11px; color: #667276;">{{ d.etat }}</div>
+              </div>
+              <sc-if value="{{ d.fait }}" hint-placeholder-val="{{ true }}">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#2FE0BE" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;"><path d="M4 12.5l5 5L20 6.5"/></svg>
+              </sc-if>
+            </div>
+          </sc-for>
+        </div>
+      </section>
+
+      <section class="rise" style="background: #15191B; border: 1px solid rgba(255,255,255,.07); border-radius: 9px; padding: 16px; animation-delay: .24s">
+        <div class="lbl" style="margin-bottom: 11px;">Forfait</div>
+        <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 9px;">
+          <span class="mono" style="font-size: 19px; font-weight: 500;">8 <span style="color: #667276; font-size: 13px;">/ 10 séances</span></span>
+          <span class="mono" style="font-size: 12px; color: #2FE0BE;">80 %</span>
+        </div>
+        <div style="height: 6px; border-radius: 999px; background: rgba(255,255,255,.08); overflow: hidden;">
+          <div class="grow" style="height: 100%; width: 80%; background: linear-gradient(90deg,#1FA894,#2FE0BE); border-radius: 999px; animation-delay: .5s;"></div>
+        </div>
+        <div class="mono" style="font-size: 11px; color: #667276; margin-top: 8px;">La clôture décomptera la séance 8</div>
+      </section>
+
+      <section class="rise" style="flex: 1; min-height: 0; background: #15191B; border: 1px solid rgba(255,255,255,.07); border-radius: 9px; padding: 16px; display: flex; flex-direction: column; animation-delay: .3s">
+        <div class="lbl" style="margin-bottom: 12px;">Évolution du poids</div>
+
+        <!-- Une seule série : pas de légende, le titre la nomme -->
+        <div style="flex: 1; min-height: 0; display: flex; align-items: stretch; gap: 6px; position: relative;">
+          <div style="position: absolute; left: 0; right: 0; bottom: 19px; height: 1px; background: rgba(255,255,255,.08);"></div>
+          <sc-for list="{{ courbe }}" as="c" hint-placeholder-count="5">
+            <div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 6px;">
+              <span class="mono" style="font-size: 10px; color: {{ c.ink }};">{{ c.valeur }}</span>
+              <div class="growY" style="width: 100%; height: {{ c.h }}%; background: {{ c.bg }}; border-radius: 4px 4px 0 0; animation-delay: {{ c.delay }};"></div>
+              <span class="mono" style="height: 18px; line-height: 18px; font-size: 9.5px; color: #566165;">{{ c.mois }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div class="mono" style="font-size: 11px; color: #667276; text-align: center;">−7,3 kg depuis l'ouverture du dossier</div>
+      </section>
+    </aside>
+  </main>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { poids: 84.2, ordonnance: false };
+  }
+
+  renderVals() {
+    const TAILLE = 1.75;
+    const PRECEDENT = 86.3;
+    const p = Math.round(this.state.poids * 10) / 10;
+    const imc = p / (TAILLE * TAILLE);
+
+    // Le seuil décide de la couleur : un IMC qui passe sous 25 doit se voir.
+    const teinte = imc >= 30 ? '#FF6470' : (imc >= 25 ? '#F0A93B' : '#2FE0BE');
+    const libelle = imc >= 30 ? 'obésité' : (imc >= 25 ? 'surpoids' : 'normal');
+
+    const ecart = Math.round((p - PRECEDENT) * 10) / 10;
+    const signe = ecart > 0 ? '+' : '';
+
+    const docs = [
+      { titre: 'Consultation',     etat: 'rédigée à 14:41',      fait: true,  cle: 'c' },
+      { titre: 'Ordonnance',       etat: this.state.ordonnance ? 'ORD-0143 — prête à imprimer' : 'non rédigée', fait: this.state.ordonnance, cle: 'o' },
+      { titre: 'Demande de bilan', etat: 'non rédigée',          fait: false, cle: 'b' },
+    ].map((d) => ({
+      titre: d.titre,
+      etat: d.etat,
+      fait: d.fait,
+      cls: d.fait ? 'fait' : '',
+      bg: d.fait ? 'rgba(47,224,190,.14)' : 'rgba(255,255,255,.06)',
+      ink: d.fait ? '#2FE0BE' : '#96A1A6',
+      basculer: d.cle === 'o'
+        ? () => this.setState({ ordonnance: !this.state.ordonnance })
+        : () => {},
+    }));
+
+    const mesures = [
+      { mois: 'Mai', v: 91.5 }, { mois: 'Juin', v: 89.8 }, { mois: 'Juil', v: 87.1 },
+      { mois: 'Aoû', v: 86.3 }, { mois: 'Sep', v: p },
+    ];
+    const bas = 84, haut = 93;
+    const courbe = mesures.map((m, i) => {
+      const dernier = i === mesures.length - 1;
+      return {
+        mois: m.mois,
+        valeur: (Math.round(m.v * 10) / 10).toString().replace('.', ','),
+        h: Math.max(6, Math.round(((m.v - bas) / (haut - bas)) * 100)),
+        bg: dernier ? '#2FE0BE' : '#39454A',
+        ink: dernier ? '#2FE0BE' : '#667276',
+        delay: (0.36 + i * 0.06).toFixed(3) + 's',
+      };
+    });
+
+    const raccourcis = [
+      { texte: 'Bonne observance' },
+      { texte: 'Objectif conforme' },
+      { texte: 'Revoir le dîner' },
+      { texte: 'Activité maintenue' },
+    ];
+
+    return {
+      poids: p.toString().replace('.', ','),
+      imc: (Math.round(imc * 10) / 10).toString().replace('.', ','),
+      imcInk: teinte,
+      imcLibelle: libelle,
+      delta: signe + ecart.toString().replace('.', ',') + ' kg',
+      deltaInk: ecart <= 0 ? '#2FE0BE' : '#F0A93B',
+      moins: () => this.setState({ poids: Math.max(40, this.state.poids - 0.1) }),
+      plus: () => this.setState({ poids: Math.min(200, this.state.poids + 0.1) }),
+      docs,
+      courbe,
+      raccourcis,
+    };
+  }
+}
+</script>
+</body>
+</html>

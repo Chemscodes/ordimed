@@ -1,0 +1,181 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif; background: #0A0C0D; color: #EAEFF1; -webkit-font-smoothing: antialiased; }
+    a { color: #2FE0BE; text-decoration: none; }
+    a:hover { color: #5FEBD0; }
+    .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+
+    @keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+    .rise { animation: rise .6s cubic-bezier(.22,.8,.3,1) both; }
+    @keyframes pop { from { opacity: 0; transform: scale(.94); } to { opacity: 1; transform: none; } }
+    .pop { animation: pop .45s cubic-bezier(.22,.9,.3,1) both; }
+    @keyframes caret { 0%, 45% { opacity: 1; } 55%, 100% { opacity: .15; } }
+    .caret { animation: caret 1.15s ease-in-out infinite; }
+
+    .profil {
+      width: 176px; padding: 20px 16px 18px; border-radius: 12px;
+      background: #15191B; border: 1px solid rgba(255,255,255,.07);
+      display: flex; flex-direction: column; align-items: center; gap: 11px;
+      cursor: pointer; transition: background .18s ease, border-color .18s ease, transform .18s ease;
+    }
+    .profil:hover { background: #1B2023; border-color: rgba(255,255,255,.14); transform: translateY(-2px); }
+    .profil.on { background: #17211F; border-color: rgba(47,224,190,.45); transform: translateY(-2px); }
+
+    .touche {
+      height: 54px; border-radius: 9px; background: #15191B;
+      border: 1px solid rgba(255,255,255,.08);
+      display: flex; align-items: center; justify-content: center;
+      font: 500 19px "IBM Plex Mono", monospace; color: #EAEFF1; cursor: pointer;
+      transition: background .13s ease, border-color .13s ease, transform .08s ease;
+    }
+    .touche:hover { background: #242B2E; border-color: rgba(255,255,255,.16); }
+    .touche:active { transform: scale(.96); background: #2B3336; }
+    .touche.util { font-size: 12.5px; font-family: "IBM Plex Sans", sans-serif; color: #96A1A6; }
+
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 44px; padding: 0 18px; border-radius: 9px; border: 1px solid #2FE0BE; background: #2FE0BE; color: #062B25; font: 600 13.5px "IBM Plex Sans", sans-serif; cursor: pointer; transition: background .16s ease; }
+    .btn:hover { background: #55E8CD; }
+    .btn[data-off="1"] { background: #1B2023; border-color: rgba(255,255,255,.1); color: #4E585C; cursor: default; }
+
+    .lbl { font-size: 10.5px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; color: #667276; }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; position: relative; overflow: hidden; background: #0A0C0D; display: flex; align-items: center; justify-content: center;">
+
+  <!-- Vignette très retenue : une source de lumière, pas un décor -->
+  <div style="position: absolute; inset: 0; background: radial-gradient(900px 520px at 50% 8%, rgba(47,224,190,.055), transparent 70%); pointer-events: none;"></div>
+  <div style="position: absolute; left: 0; right: 0; top: 0; height: 1px; background: linear-gradient(90deg, transparent, rgba(47,224,190,.35), transparent);"></div>
+
+  <div style="position: relative; width: 960px; display: flex; flex-direction: column; align-items: center;">
+
+    <!-- Identité du cabinet -->
+    <div class="rise" style="display: flex; flex-direction: column; align-items: center; gap: 13px; animation-delay: .05s">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <div style="width: 30px; height: 30px; border-radius: 8px; background: #2FE0BE; display: flex; align-items: center; justify-content: center;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#062B25" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg>
+        </div>
+        <span style="font-size: 19px; font-weight: 600; letter-spacing: -.02em;">Ordimed</span>
+      </div>
+      <div style="text-align: center;">
+        <div style="font-size: 12.5px; color: #96A1A6;">Cabinet Belkaid — Nutrition & Diététique</div>
+        <div class="mono" style="font-size: 11.5px; color: #566165; margin-top: 3px;">Hydra, Alger</div>
+      </div>
+    </div>
+
+    <h1 class="rise" style="font-size: 25px; font-weight: 600; letter-spacing: -.03em; margin: 40px 0 6px; animation-delay: .12s">Qui prend le poste ?</h1>
+    <p class="rise" style="font-size: 13px; color: #96A1A6; margin: 0 0 30px; animation-delay: .16s">Choisissez votre profil, puis entrez votre code.</p>
+
+    <!-- Les trois postes -->
+    <div style="display: flex; gap: 14px;">
+      <sc-for list="{{ profils }}" as="p" hint-placeholder-count="3">
+        <div class="profil rise {{ p.cls }}" onClick="{{ p.pick }}" style="animation-delay: {{ p.delay }};">
+          <div class="mono" style="width: 52px; height: 52px; border-radius: 14px; background: {{ p.bg }}; color: {{ p.ink }}; display: flex; align-items: center; justify-content: center; font-size: 17px; font-weight: 600;">{{ p.ini }}</div>
+          <div style="text-align: center;">
+            <div style="font-size: 13.5px; font-weight: 600; letter-spacing: -.01em;">{{ p.nom }}</div>
+            <div style="font-size: 11.5px; color: #96A1A6; margin-top: 3px;">{{ p.role }}</div>
+          </div>
+          <div style="height: 3px; width: 28px; border-radius: 999px; background: {{ p.trait }};"></div>
+        </div>
+      </sc-for>
+    </div>
+
+    <!-- Le code -->
+    <div class="rise" style="margin-top: 34px; width: 296px; animation-delay: .34s">
+
+      <div style="display: flex; justify-content: center; gap: 13px; margin-bottom: 22px;">
+        <sc-for list="{{ points }}" as="d" hint-placeholder-count="4">
+          <div class="{{ d.cls }}" style="width: 13px; height: 13px; border-radius: 999px; background: {{ d.bg }}; border: 1.5px solid {{ d.bord }}; transition: background .18s ease, border-color .18s ease;"></div>
+        </sc-for>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px;">
+        <sc-for list="{{ touches }}" as="k" hint-placeholder-count="12">
+          <div class="touche {{ k.cls }}" onClick="{{ k.tap }}">{{ k.libelle }}</div>
+        </sc-for>
+      </div>
+
+      <button class="btn" data-off="{{ valider.off }}" style="width: 100%; margin-top: 14px;">
+        Ouvrir la session
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg>
+      </button>
+    </div>
+
+    <div class="rise" style="margin-top: 30px; display: flex; align-items: center; gap: 8px; animation-delay: .5s">
+      <span style="width: 6px; height: 6px; border-radius: 999px; background: #2FE0BE;"></span>
+      <span class="mono" style="font-size: 11px; color: #566165;">Firebase · synchronisé</span>
+      <span style="color: #333B3E;">·</span>
+      <span class="mono" style="font-size: 11px; color: #566165; cursor: pointer;">Changer de cabinet</span>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { profil: 0, code: '' };
+  }
+
+  renderVals() {
+    const gens = [
+      { nom: 'Dr. Meriem Belkaid', role: 'Médecin principal', ini: 'MB', h: ['#2FE0BE', '#1B9C88'], sur: '#062B25' },
+      { nom: 'Dr. Rachid Zerrouki', role: 'Médecin',          ini: 'RZ', h: ['#F0A93B', '#B8760F'], sur: '#2A1C05' },
+      { nom: 'Samia Aït Kaci',     role: 'Assistante',        ini: 'SA', h: ['#9B8CFA', '#6F5FD6'], sur: '#14102B' },
+    ];
+
+    const profils = gens.map((g, i) => {
+      const on = i === this.state.profil;
+      return {
+        nom: g.nom,
+        role: g.role,
+        ini: g.ini,
+        delay: (0.2 + i * 0.06).toFixed(3) + 's',
+        cls: on ? 'on' : '',
+        // Le profil choisi porte sa couleur ; les autres restent en retrait,
+        // sinon les trois se disputent l'attention.
+        bg: on ? 'linear-gradient(135deg,' + g.h[0] + ',' + g.h[1] + ')' : '#242B2E',
+        ink: on ? g.sur : '#96A1A6',
+        trait: on ? g.h[0] : 'transparent',
+        pick: () => this.setState({ profil: i, code: '' }),
+      };
+    });
+
+    const n = this.state.code.length;
+    const points = [0, 1, 2, 3].map((i) => ({
+      cls: i === n ? 'caret' : '',
+      bg: i < n ? '#2FE0BE' : 'transparent',
+      bord: i < n ? '#2FE0BE' : (i === n ? '#2FE0BE' : 'rgba(255,255,255,.16)'),
+    }));
+
+    const saisir = (c) => {
+      if (this.state.code.length < 4) this.setState({ code: this.state.code + c });
+    };
+
+    const touches = ['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((c) => ({
+      libelle: c, cls: '', tap: () => saisir(c),
+    }));
+    touches.push({ libelle: 'Effacer', cls: 'util', tap: () => this.setState({ code: '' }) });
+    touches.push({ libelle: '0', cls: '', tap: () => saisir('0') });
+    touches.push({
+      libelle: '←', cls: 'util',
+      tap: () => this.setState({ code: this.state.code.slice(0, -1) }),
+    });
+
+    // Le bouton ne s'allume qu'une fois les quatre chiffres saisis.
+    return { profils, points, touches, valider: { off: n === 4 ? '0' : '1' } };
+  }
+}
+</script>
+</body>
+</html>

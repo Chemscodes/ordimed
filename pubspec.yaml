@@ -49,6 +49,8 @@ dependencies:
   dio: ^5.11.0
   socket_io_client: ^3.1.6
   shared_preferences: ^2.5.3
+  firebase_storage: ^13.6.0
+  file_picker: ^11.0.3
   
 dev_dependencies:
   flutter_test:
