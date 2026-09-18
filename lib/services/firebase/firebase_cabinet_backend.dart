@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../core/coerce.dart';
 import '../api_client.dart';
 import '../cabinet_backend.dart';
 import '../realtime_service.dart';
@@ -921,8 +922,9 @@ class FirebaseCabinetBackend implements CabinetBackend {
     final gardees = toutes
         ? [...liste]
         : liste.where((e) {
-            final close = DateTime.tryParse('${e['closedAt']}');
-            return close == null || !close.isBefore(minuit);
+            final close = asDateOrNull(e['closedAt']);
+            if (close != null) return !close.isBefore(minuit);
+            return !_termineeSansCloture(e, debut);
           }).toList();
 
     DateTime cle(Map<String, dynamic> m) =>
@@ -931,6 +933,27 @@ class FirebaseCabinetBackend implements CabinetBackend {
     // écrans ont été construits.
     gardees.sort((a, b) => cle(b).compareTo(cle(a)));
     return gardees;
+  }
+
+  /// Une entrée sans `closedAt` mais qu'il ne faut plus traiter comme en
+  /// cours.
+  ///
+  /// L'ancienne version en a laissé dans les données migrées : des lignes
+  /// marquées terminées ou annulées sans date de clôture, et des lignes
+  /// jamais clôturées. Elle les masquait (statut, ou plus de 24 h
+  /// d'ancienneté) ; sans cette règle elles reviendraient dans la file du
+  /// jour et bloqueraient le patient comme « déjà en salle d'attente ».
+  static bool _termineeSansCloture(
+    Map<String, dynamic> e,
+    DateTime maintenant,
+  ) {
+    final statut = '${e['status'] ?? ''}'.toLowerCase();
+    if (const {'done', 'closed', 'cancelled', 'canceled'}.contains(statut)) {
+      return true;
+    }
+    final creee = asDateOrNull(e['createdAt']);
+    return creee != null &&
+        maintenant.difference(creee) > const Duration(hours: 24);
   }
 
   /// L'entrée encore ouverte d'un patient, s'il en a une.
@@ -944,8 +967,12 @@ class FirebaseCabinetBackend implements CabinetBackend {
     final s = await _c(
       'salle_attente',
     ).where('patientId', isEqualTo: patientId).get();
+    final maintenant = DateTime.now();
     for (final d in s.docs) {
-      if (d.data()['closedAt'] == null) return d;
+      final e = d.data();
+      if (e['closedAt'] == null && !_termineeSansCloture(e, maintenant)) {
+        return d;
+      }
     }
     return null;
   }
