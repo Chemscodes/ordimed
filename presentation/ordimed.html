@@ -410,6 +410,19 @@
   .cta-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .55rem; }
   .cta-list li { padding-left: 1.6rem; position: relative; color: var(--text); }
   .cta-list li::before { content: "✓"; position: absolute; left: 0; color: var(--mint); font-weight: 700; }
+
+  /* ---------- formulaire « être rappelé » ---------- */
+  .rappel { margin-top: 1.6rem; border: 1px solid var(--line); border-radius: 1.4rem; padding: clamp(1.4rem, 4vw, 2.4rem); background: var(--deep); }
+  .rappel-grid { display: grid; gap: .9rem; margin-top: 1.2rem; }
+  @media (min-width: 44rem) { .rappel-grid { grid-template-columns: 1fr 1fr; } .rappel-grid .plein { grid-column: 1 / -1; } }
+  .rappel label { display: grid; gap: .35rem; font-size: .9rem; color: var(--muted); }
+  .rappel input, .rappel select, .rappel textarea { font: inherit; color: var(--text); background: var(--void); border: 1px solid var(--line);
+    border-radius: .7rem; padding: .75rem .9rem; width: 100%; }
+  .rappel textarea { min-height: 5.5rem; resize: vertical; }
+  .rappel input:focus, .rappel select:focus, .rappel textarea:focus { border-color: var(--mint); outline: none; }
+  .rappel .cache { position: absolute; left: -9999px; }
+  .rappel-etat { margin-top: 1rem; color: var(--mint); font-weight: 600; min-height: 1.4em; }
+  .rappel-etat.erreur { color: var(--coral); }
   .wa-float { position: fixed; right: 16px; bottom: 16px; z-index: 50; width: 58px; height: 58px; border-radius: 50%;
     background: #25D366; display: grid; place-items: center; box-shadow: 0 10px 30px rgba(0,0,0,.45); transition: transform .2s ease; }
   .wa-float:hover { transform: scale(1.06); }
@@ -1146,6 +1159,44 @@
           <li>Paiement par CCP ou en espèces</li>
         </ul>
       </div>
+
+      <!-- Netlify Forms : les envois arrivent dans le tableau de bord Netlify (Forms > rappel). -->
+      <form id="rappel" class="rappel reveal" name="rappel" method="POST" data-netlify="true" netlify-honeypot="bot-field">
+        <div class="eyebrow">Être rappelé</div>
+        <h3 class="cta-title" style="font-size:clamp(1.4rem,3vw,2rem)">Laissez votre numéro, on vous appelle sous 24 h.</h3>
+        <input type="hidden" name="form-name" value="rappel">
+        <input type="hidden" name="source" value="site">
+        <p class="cache"><label>Ne pas remplir <input name="bot-field"></label></p>
+        <div class="rappel-grid">
+          <label>Nom du médecin<input name="nom" required autocomplete="name" placeholder="Dr ..."></label>
+          <label>Téléphone (WhatsApp)<input name="telephone" type="tel" required autocomplete="tel" inputmode="tel" placeholder="05XX XX XX XX" pattern="[0-9 +]{9,16}"></label>
+          <label>Spécialité
+            <select name="specialite" required>
+              <option value="">Choisir...</option>
+              <option>Nutrition / obésité</option>
+              <option>Kinésithérapie / rééducation</option>
+              <option>Dentaire</option>
+              <option>Dermatologie / esthétique</option>
+              <option>Médecine générale</option>
+              <option>Autre spécialité</option>
+              <option>Centre / clinique</option>
+            </select>
+          </label>
+          <label>Ville<input name="ville" required placeholder="Skikda, Constantine..."></label>
+          <label>Meilleur moment pour appeler
+            <select name="moment">
+              <option>Le matin</option>
+              <option>L'après-midi</option>
+              <option>Après les consultations</option>
+              <option>Peu importe</option>
+            </select>
+          </label>
+          <label>E-mail (facultatif)<input name="email" type="email" autocomplete="email"></label>
+          <label class="plein">Une question ? (facultatif)<textarea name="message"></textarea></label>
+        </div>
+        <div class="cta-row mt-8"><button class="btn btn-solid btn-lg" type="submit">Être rappelé</button></div>
+        <div class="rappel-etat" role="status" aria-live="polite"></div>
+      </form>
     </div>
   </section>
 
@@ -1173,6 +1224,35 @@
 </div>
 
 <script>
+/* Formulaire « être rappelé » : envoi à Netlify Forms sans quitter la page.
+   ?src=whatsapp (ou email, reel...) dans le lien permet de savoir d'où vient le contact. */
+(function () {
+  var f = document.getElementById('rappel');
+  if (!f) return;
+  var src = new URLSearchParams(location.search).get('src');
+  if (src) f.elements.source.value = src.slice(0, 40);
+  var etat = f.querySelector('.rappel-etat');
+  f.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var bouton = f.querySelector('button[type=submit]');
+    bouton.disabled = true;
+    etat.className = 'rappel-etat';
+    etat.textContent = 'Envoi...';
+    fetch('/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams(new FormData(f)).toString()
+    }).then(function (r) {
+      if (!r.ok) throw new Error(r.status);
+      f.reset();
+      etat.textContent = 'Merci ! On vous appelle très vite.';
+    }).catch(function () {
+      etat.className = 'rappel-etat erreur';
+      etat.textContent = "L'envoi n'a pas marché. Écrivez-nous sur WhatsApp au 0551 68 62 12.";
+    }).finally(function () { bouton.disabled = false; });
+  });
+})();
+
 /* Numéro WhatsApp Business d'Ordimed : à remplir une seule fois ici (format international, sans + ni espaces). */
 (function () {
   var NUMERO = '213551686212';
