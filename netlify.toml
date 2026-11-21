@@ -1,0 +1,5 @@
+# Netlify publie la page de presentation, pas l'application.
+# presentation/index.html est genere par presentation/build-standalone.ps1
+# a partir de presentation/ordimed.html : le regenerer avant chaque commit.
+[build]
+  publish = "presentation"

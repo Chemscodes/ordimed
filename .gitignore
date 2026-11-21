@@ -55,7 +55,6 @@
 /android/local.properties
 /build/
 /presentation/*.mp4
-/presentation/index.html
 /tools/
 app.*.map.json
 app.*.symbols
