@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ordimed — Écrivez-nous sur WhatsApp</title>
+<meta name="description" content="Choisissez votre demande : une démo d'Ordimed, les prix, ou être rappelé. Le message arrive directement sur notre WhatsApp.">
+<meta name="theme-color" content="#04100E">
+<meta property="og:title" content="Ordimed — Écrivez-nous sur WhatsApp">
+<meta property="og:description" content="Une démo, les prix ou être rappelé : choisissez, on vous répond sur WhatsApp.">
+<style>
+  :root { --void:#04100E; --deep:#061714; --line:#143430; --mint:#3BF0CE; --text:#EAFBF7; --muted:#7FA9A1; --wa:#25D366; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; background: radial-gradient(900px 600px at 50% -10%, #0E3B37, var(--void) 70%); color: var(--text);
+         font-family: system-ui, "Segoe UI", Roboto, Arial, sans-serif; display: flex; justify-content: center; }
+  main { width: 100%; max-width: 30rem; padding: 2.4rem 1rem 3rem; }
+  .logo { font-size: 2.6rem; font-weight: 800; color: var(--mint); letter-spacing: -.02em; text-align: center; }
+  .sous { text-align: center; color: var(--muted); margin: .3rem 0 2rem; line-height: 1.5; }
+  h1 { font-size: 1.35rem; text-align: center; margin: 0 0 1.2rem; }
+  .choix { display: grid; gap: .9rem; }
+  a.c { display: flex; align-items: center; gap: 1rem; padding: 1.1rem 1.2rem; border-radius: 1.1rem; background: var(--deep);
+        border: 1px solid var(--line); color: var(--text); text-decoration: none; transition: border-color .15s, transform .15s; }
+  a.c:hover, a.c:focus-visible { border-color: var(--mint); transform: translateY(-2px); outline: none; }
+  .ic { flex: none; width: 3rem; height: 3rem; border-radius: 50%; display: grid; place-items: center; font-size: 1.5rem; background: #0B2A26; }
+  .t { font-weight: 700; font-size: 1.08rem; }
+  .d { color: var(--muted); font-size: .92rem; margin-top: .15rem; }
+  .fl { margin-left: auto; color: var(--wa); font-size: 1.4rem; }
+  .offre { margin-top: 1.6rem; padding: 1rem 1.2rem; border-radius: 1rem; border: 1px dashed #2a5a54; color: var(--muted); font-size: .92rem; line-height: 1.55; text-align: center; }
+  .offre b { color: var(--mint); }
+  .pied { margin-top: 1.6rem; text-align: center; font-size: .85rem; color: var(--muted); }
+  .pied a { color: var(--mint); }
+</style>
+</head>
+<body>
+<main>
+  <div class="logo">Ordimed</div>
+  <p class="sous">Le logiciel de cabinet médical fait en Algérie</p>
+  <h1>Que souhaitez-vous ?</h1>
+  <div class="choix">
+    <a class="c" data-choix="demo" href="#"><span class="ic">🎬</span><span><span class="t">Voir une démo</span><span class="d" style="display:block">On vous envoie la vidéo et on passe au cabinet</span></span><span class="fl">➜</span></a>
+    <a class="c" data-choix="prix" href="#"><span class="ic">💰</span><span><span class="t">Connaître les prix</span><span class="d" style="display:block">Cabinet, centre, installation, offre fondateurs</span></span><span class="fl">➜</span></a>
+    <a class="c" data-choix="rappel" href="#"><span class="ic">📞</span><span><span class="t">Être rappelé</span><span class="d" style="display:block">Indiquez votre ville et le meilleur moment</span></span><span class="fl">➜</span></a>
+  </div>
+  <div class="offre">Offre fondateurs : <b>30 jours d'essai gratuit</b>, installation offerte et prix bloqué à vie pour les 10 premiers cabinets.</div>
+  <div class="pied">Votre message s'ouvre dans WhatsApp, vous n'avez plus qu'à l'envoyer.<br><a href="/">Découvrir Ordimed</a></div>
+</main>
+<script>
+  /* Numéro WhatsApp d'Ordimed, format international sans + ni espaces. */
+  var NUMERO = '213551686212';
+  var src = (new URLSearchParams(location.search).get('src') || '').replace(/[^a-z0-9_-]/gi, '').slice(0, 20);
+  var via = src ? ' (via ' + src + ')' : '';
+  var MESSAGES = {
+    demo: "Bonjour, je souhaite voir une démo d'Ordimed pour mon cabinet." + via + "\nSpécialité : \nVille : \n\nDÉMO",
+    prix: "Bonjour, je voudrais connaître les prix d'Ordimed." + via + "\nCabinet seul ou centre avec plusieurs médecins : \nVille : \n\nPRIX",
+    rappel: "Bonjour, je souhaite être rappelé au sujet d'Ordimed." + via + "\nNom : \nVille : \nMeilleur moment pour m'appeler : \n\nRAPPEL"
+  };
+  document.querySelectorAll('a[data-choix]').forEach(function (a) {
+    a.href = 'https://wa.me/' + NUMERO + '?text=' + encodeURIComponent(MESSAGES[a.dataset.choix]);
+    a.target = '_blank'; a.rel = 'noopener';
+  });
+</script>
+</body>
+</html>
